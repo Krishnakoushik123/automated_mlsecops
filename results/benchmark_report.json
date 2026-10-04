@@ -1,0 +1,53 @@
+{
+  "num_paradigms": 3,
+  "paradigms": [
+    {
+      "name": "Traditional ML",
+      "training_time_sec": 0.027068499999586493,
+      "security_vulnerabilities": 14,
+      "mttr_minutes": 180.0,
+      "deployment_lead_time_hr": 48.0,
+      "f1_score": 0.5523809523809524,
+      "precision": 0.8285714285714286,
+      "recall": 0.4142857142857143,
+      "security_score": 0.2,
+      "robustness_score": 0.45,
+      "auto_recovery_rate": 0.0,
+      "dea_efficiency": 1.0,
+      "composite_score": 0.1357417772171901
+    },
+    {
+      "name": "MLOps",
+      "training_time_sec": 70.28859430000011,
+      "security_vulnerabilities": 6,
+      "mttr_minutes": 45.0,
+      "deployment_lead_time_hr": 4.0,
+      "f1_score": 0.6593406593406593,
+      "precision": 0.8108108108108109,
+      "recall": 0.5555555555555556,
+      "security_score": 0.55,
+      "robustness_score": 0.6,
+      "auto_recovery_rate": 0.25,
+      "dea_efficiency": 1.0,
+      "composite_score": 0.5067541409842364
+    },
+    {
+      "name": "MLSecOps",
+      "training_time_sec": 144.3157315999997,
+      "security_vulnerabilities": 0,
+      "mttr_minutes": 0.5,
+      "deployment_lead_time_hr": 0.5,
+      "f1_score": 0.6593406593406593,
+      "precision": 0.8108108108108109,
+      "recall": 0.5555555555555556,
+      "security_score": 0.9955999999999999,
+      "robustness_score": 0.978,
+      "auto_recovery_rate": 1.0,
+      "dea_efficiency": 1.0,
+      "composite_score": 1.0
+    }
+  ],
+  "best_paradigm": "MLSecOps",
+  "ranking_method": "dea_efficiency + composite_tiebreak",
+  "note": "DEA uses formal Charnes-Cooper LP (CCR multiplier model). Composite score is a normalized output/input ratio used as tiebreaker."
+}

@@ -1,0 +1,58 @@
+# Environment & secrets
+.env
+*.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# Data (large files)
+data/raw/*.parquet
+data/processed/*.npy
+data/processed/*.parquet
+
+# Models
+models/*.joblib
+models/*.pkl
+models/*.pt
+models/*.h5
+
+# Results (generated – keep structure, ignore data)
+results/coverage/
+results/csv/*.csv
+results/json/*.json
+
+# Pytest / Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Docker
+docker-compose.override.yml
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,37 @@
+# docker/Dockerfile.streamlit
+# Production-ready Dockerfile for automated-mlsecops Streamlit Frontend
+
+FROM python:3.11-slim
+
+# Prevent Python from writing .pyc files & enable unbuffered logging
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy and install python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir streamlit plotly requests pandas
+
+# Copy application source code
+COPY frontend/ /app/frontend/
+
+# Expose Streamlit port
+EXPOSE 8501
+
+# Non-root security user
+RUN useradd -m appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:8501/_stcore/health || exit 1
+
+# Start streamlit server
+CMD ["streamlit", "run", "frontend/app.py", "--server.port=8501", "--server.address=0.0.0.0"]

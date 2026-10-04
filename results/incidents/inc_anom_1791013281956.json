@@ -1,0 +1,9 @@
+{
+  "type": "input_anomaly",
+  "anomaly_score": 0.85,
+  "threshold": 0.75,
+  "sample_count": 10,
+  "action": "fallback_conservative_prediction",
+  "timestamp": "2026-10-03T07:41:21Z",
+  "incident_id": "inc_anom_1791013281956"
+}

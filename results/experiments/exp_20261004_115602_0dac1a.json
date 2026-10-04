@@ -1,0 +1,337 @@
+{
+  "experiment_id": "exp_20261004_115602_0dac1a",
+  "experiment_name": "pipeline_experiment",
+  "created_at": "2026-10-04T06:26:02Z",
+  "status": "COMPLETED",
+  "error_message": null,
+  "config": {
+    "project": {
+      "name": "automated-mlsecops",
+      "version": "1.0.0",
+      "random_seed": 42,
+      "log_level": "INFO"
+    },
+    "paths": {
+      "data_raw": "data/raw",
+      "data_processed": "data/processed",
+      "models": "models",
+      "results": "results",
+      "mlflow_uri": "sqlite:///mlflow.db"
+    },
+    "dataset": {
+      "name": "credit_fraud",
+      "source": "sklearn",
+      "test_size": 0.2,
+      "validation_size": 0.1
+    },
+    "features": {
+      "numerical_strategy": "median",
+      "scale": "standard",
+      "pca_components": null
+    },
+    "training": {
+      "algorithms": [
+        "logistic_regression",
+        "random_forest",
+        "gradient_boosting"
+      ],
+      "hyperparameters": {
+        "logistic_regression": {
+          "C": 1.0,
+          "max_iter": 1000,
+          "solver": "lbfgs"
+        },
+        "random_forest": {
+          "n_estimators": 100,
+          "max_depth": 10,
+          "min_samples_split": 5
+        },
+        "gradient_boosting": {
+          "n_estimators": 100,
+          "learning_rate": 0.1,
+          "max_depth": 5
+        }
+      },
+      "cv_folds": 5
+    },
+    "mlflow": {
+      "experiment_prefix": "mlsecops",
+      "model_name": "credit_fraud_classifier",
+      "auto_log": true
+    },
+    "security": {
+      "dependency_audit": true,
+      "secrets_scan": true,
+      "data_integrity": true,
+      "adversarial_robustness": true,
+      "model_integrity": true,
+      "max_critical_vulns": 0,
+      "max_high_vulns": 2,
+      "min_robustness_score": 0.7,
+      "poisoning_threshold": 0.05
+    },
+    "monitoring": {
+      "drift_threshold": 0.1,
+      "latency_p99_ms": 200,
+      "prediction_drift_threshold": 0.15,
+      "check_interval_seconds": 60
+    },
+    "auto_response": {
+      "retrain_on_drift": true,
+      "rollback_on_gate_failure": true,
+      "alert_webhook_url": ""
+    },
+    "dea": {
+      "inputs": [
+        "development_time_hours",
+        "training_time_seconds",
+        "dataset_size",
+        "cpu_usage_percent",
+        "memory_usage_mb",
+        "labor_effort_hours"
+      ],
+      "outputs": [
+        "f1_score",
+        "robustness_score",
+        "inference_latency_ms",
+        "security_pass_rate"
+      ]
+    },
+    "api": {
+      "host": "0.0.0.0",
+      "port": 8000,
+      "workers": 1,
+      "reload": false
+    }
+  },
+  "dataset": {
+    "name": "credit_fraud",
+    "source": "sklearn",
+    "n_samples": 5000,
+    "n_features": 20,
+    "n_classes": 2,
+    "class_distribution": {
+      "0": 4728,
+      "1": 272
+    }
+  },
+  "data_quality": {
+    "schema": {
+      "passed": true,
+      "errors": []
+    },
+    "missing": {
+      "total_missing": 0,
+      "by_column": {},
+      "passed": true
+    },
+    "duplicates": {
+      "n_duplicates": 0,
+      "passed": "True"
+    },
+    "class_balance": {
+      "class_distribution": {
+        "0": 0.9456,
+        "1": 0.0544
+      },
+      "min_class_ratio": 0.0544,
+      "passed": false
+    },
+    "overall_passed": true
+  },
+  "models": {
+    "logistic_regression": {
+      "algorithm": "logistic_regression",
+      "run_id": "5992c0c36ca142a28aecf40badea935c",
+      "model_path": "models\\logistic_regression.joblib",
+      "hyperparams": {
+        "C": 1.0,
+        "max_iter": 1000,
+        "solver": "lbfgs"
+      },
+      "metrics": {
+        "accuracy": 0.958,
+        "precision": 0.65,
+        "recall": 0.48148148148148145,
+        "f1": 0.5531914893617021,
+        "roc_auc": 0.8948007203821157,
+        "latency_p50_ms": 0.10999999994965037,
+        "latency_p95_ms": 0.44962499991925076,
+        "latency_p99_ms": 1.098005999742778,
+        "training_time_sec": 0.010076500000195665,
+        "optimal_threshold": 0.8503894022231642,
+        "baseline_f1": 0.3435114503816794,
+        "baseline_precision": 0.21634615384615385,
+        "baseline_recall": 0.8333333333333334,
+        "confusion_matrix": null
+      }
+    },
+    "random_forest": {
+      "algorithm": "random_forest",
+      "run_id": "6ce5617b4123414ebad21cab8c0c0d78",
+      "model_path": "models\\random_forest.joblib",
+      "hyperparams": {
+        "n_estimators": 100,
+        "max_depth": 10,
+        "min_samples_split": 5
+      },
+      "metrics": {
+        "accuracy": 0.969,
+        "precision": 0.8108108108108109,
+        "recall": 0.5555555555555556,
+        "f1": 0.6593406593406593,
+        "roc_auc": 0.917576932111816,
+        "latency_p50_ms": 9.212399999796617,
+        "latency_p95_ms": 12.235655000222321,
+        "latency_p99_ms": 13.546240000514443,
+        "training_time_sec": 1.0716247999998814,
+        "optimal_threshold": 0.452452379705787,
+        "baseline_f1": 0.611764705882353,
+        "baseline_precision": 0.8387096774193549,
+        "baseline_recall": 0.48148148148148145,
+        "confusion_matrix": null
+      }
+    },
+    "gradient_boosting": {
+      "algorithm": "gradient_boosting",
+      "run_id": "660d99c564404c0e97ee8678ade46c1e",
+      "model_path": "models\\gradient_boosting.joblib",
+      "hyperparams": {
+        "n_estimators": 100,
+        "learning_rate": 0.1,
+        "max_depth": 5
+      },
+      "metrics": {
+        "accuracy": 0.962,
+        "precision": 0.66,
+        "recall": 0.6111111111111112,
+        "f1": 0.6346153846153846,
+        "roc_auc": 0.9005363714666039,
+        "latency_p50_ms": 0.18725000018093851,
+        "latency_p95_ms": 0.38637500024378796,
+        "latency_p99_ms": 0.7248170001275855,
+        "training_time_sec": 4.9609968999993725,
+        "optimal_threshold": 0.1336985499815349,
+        "baseline_f1": 0.5822784810126582,
+        "baseline_precision": 0.92,
+        "baseline_recall": 0.42592592592592593,
+        "confusion_matrix": null
+      }
+    }
+  },
+  "best_model": {
+    "algorithm": "random_forest",
+    "run_id": "6ce5617b4123414ebad21cab8c0c0d78",
+    "model_path": "models\\random_forest.joblib",
+    "optimal_threshold": 0.452452379705787,
+    "metrics": {
+      "accuracy": 0.969,
+      "precision": 0.8108108108108109,
+      "recall": 0.5555555555555556,
+      "f1": 0.6593406593406593,
+      "roc_auc": 0.917576932111816,
+      "latency_p50_ms": 9.212399999796617,
+      "latency_p95_ms": 12.235655000222321,
+      "latency_p99_ms": 13.546240000514443,
+      "training_time_sec": 1.0716247999998814,
+      "optimal_threshold": 0.452452379705787,
+      "baseline_f1": 0.611764705882353,
+      "baseline_precision": 0.8387096774193549,
+      "baseline_recall": 0.48148148148148145,
+      "confusion_matrix": null
+    }
+  },
+  "security": {
+    "overall_passed": true,
+    "overall_score": 0.9955999999999999,
+    "gate_results": [
+      {
+        "gate": "dependency_audit",
+        "passed": true,
+        "score": 1.0,
+        "duration_seconds": 0.05141339999954653,
+        "details": {
+          "total_vulnerabilities": 0,
+          "critical": 0,
+          "high": 0,
+          "max_critical_allowed": 0,
+          "max_high_allowed": 2
+        }
+      },
+      {
+        "gate": "secrets_scan",
+        "passed": true,
+        "score": 1.0,
+        "duration_seconds": 0.04996000000028289,
+        "details": {
+          "high_severity": 0,
+          "medium_severity": 0,
+          "total_issues": 0,
+          "findings": []
+        }
+      },
+      {
+        "gate": "data_integrity",
+        "passed": true,
+        "score": 1.0,
+        "duration_seconds": 0.002605799999400915,
+        "details": {
+          "js_divergence": 0.0,
+          "estimated_flip_rate": 0.0,
+          "feature_anomaly_rate": 0.0,
+          "threshold": 0.05
+        }
+      },
+      {
+        "gate": "adversarial_robustness",
+        "passed": true,
+        "score": 0.978,
+        "duration_seconds": 0.2877598000004582,
+        "details": {
+          "epsilon": 0.1,
+          "n_samples": 500,
+          "adv_accuracy": 0.978,
+          "min_required": 0.7,
+          "method": "fgsm_finite_diff"
+        }
+      },
+      {
+        "gate": "model_integrity",
+        "passed": true,
+        "score": 1.0,
+        "duration_seconds": 0.03649089999998978,
+        "details": {
+          "model_path": "models\\random_forest.joblib",
+          "sha256": "3216d7bdc7531d23168f22cd4e774d202ad36d2d8583bd1a15691a36e8061255",
+          "matched": true
+        }
+      }
+    ]
+  },
+  "resources": {
+    "pipeline_execution_time_sec": 54.84880280000016,
+    "cpu_count": 12,
+    "ram_total_gb": 15.7,
+    "ram_used_gb": 10.7,
+    "ram_usage_percent": 68.1
+  },
+  "monitoring": {
+    "drift_threshold": 0.1,
+    "anomaly_detector_active": true
+  },
+  "deployment": {
+    "stage": "Staging",
+    "model_version": "v1.0.0",
+    "registered": false,
+    "api_endpoint": "http://localhost:8000/predict"
+  },
+  "research_metrics": {
+    "f1_score": 0.6593406593406593,
+    "precision": 0.8108108108108109,
+    "recall": 0.5555555555555556,
+    "accuracy": 0.969,
+    "roc_auc": 0.917576932111816,
+    "security_compliance": 0.9955999999999999,
+    "latency_p50_ms": 9.212399999796617
+  }
+}
