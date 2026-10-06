@@ -1,4 +1,4 @@
-﻿"""
+"""
 src/features/preprocessing.py
 ------------------------------
 Reproducible feature preprocessing pipeline built on scikit-learn's Pipeline.
@@ -97,18 +97,23 @@ def split_dataset(
     X_arr = X.values
     y_arr = y.values
 
+    # Determine whether to stratify (only for classification)
+    task_type = config.get("dataset", {}).get("task_type", "classification")
+    stratify_arr = y_arr if task_type == "classification" else None
+
     # First split off test set
     X_trainval, X_test, y_trainval, y_test = train_test_split(
-        X_arr, y_arr, test_size=test_size, random_state=seed, stratify=y_arr
+        X_arr, y_arr, test_size=test_size, random_state=seed, stratify=stratify_arr
     )
 
     # Then split validation from remaining
     val_fraction = val_size / (1.0 - test_size)
+    stratify_trainval = y_trainval if task_type == "classification" else None
     X_train, X_val, y_train, y_val = train_test_split(
         X_trainval, y_trainval,
         test_size=val_fraction,
         random_state=seed,
-        stratify=y_trainval,
+        stratify=stratify_trainval,
     )
 
     logger.info(

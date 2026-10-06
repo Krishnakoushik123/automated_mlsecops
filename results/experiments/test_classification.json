@@ -1,0 +1,312 @@
+{
+  "experiment_id": "test_classification",
+  "experiment_name": "pipeline_experiment",
+  "created_at": "2026-10-06T16:15:26Z",
+  "status": "COMPLETED",
+  "error_message": null,
+  "config": {
+    "project": {
+      "name": "automated-mlsecops",
+      "version": "1.0.0",
+      "random_seed": 42,
+      "log_level": "INFO"
+    },
+    "paths": {
+      "data_raw": "data/raw",
+      "data_processed": "data/processed",
+      "models": "models",
+      "results": "results",
+      "mlflow_uri": "sqlite:///mlflow.db"
+    },
+    "dataset": {
+      "name": "credit_fraud",
+      "source": "file",
+      "test_size": 0.2,
+      "validation_size": 0.1,
+      "csv_path": "data\\raw\\cardata.csv",
+      "file_path": "scratch/class_data.csv",
+      "task_type": "classification",
+      "target_column": "target"
+    },
+    "features": {
+      "numerical_strategy": "median",
+      "scale": "standard",
+      "pca_components": null
+    },
+    "training": {
+      "algorithms": [
+        "decision_tree",
+        "logistic_regression"
+      ],
+      "hyperparameters": {
+        "logistic_regression": {
+          "C": 1.0,
+          "max_iter": 1000,
+          "solver": "lbfgs"
+        },
+        "random_forest": {
+          "n_estimators": 100,
+          "max_depth": 10,
+          "min_samples_split": 5
+        },
+        "gradient_boosting": {
+          "n_estimators": 100,
+          "learning_rate": 0.1,
+          "max_depth": 5
+        }
+      },
+      "cv_folds": 5,
+      "optimization_metric": "f1"
+    },
+    "mlflow": {
+      "experiment_prefix": "mlsecops",
+      "model_name": "credit_fraud_classifier",
+      "auto_log": true
+    },
+    "security": {
+      "dependency_audit": true,
+      "secrets_scan": true,
+      "data_integrity": true,
+      "adversarial_robustness": true,
+      "model_integrity": true,
+      "max_critical_vulns": 0,
+      "max_high_vulns": 2,
+      "min_robustness_score": 0.7,
+      "poisoning_threshold": 0.05
+    },
+    "monitoring": {
+      "drift_threshold": 0.1,
+      "latency_p99_ms": 200,
+      "prediction_drift_threshold": 0.15,
+      "check_interval_seconds": 60
+    },
+    "auto_response": {
+      "retrain_on_drift": true,
+      "rollback_on_gate_failure": true,
+      "alert_webhook_url": ""
+    },
+    "dea": {
+      "inputs": [
+        "development_time_hours",
+        "training_time_seconds",
+        "dataset_size",
+        "cpu_usage_percent",
+        "memory_usage_mb",
+        "labor_effort_hours"
+      ],
+      "outputs": [
+        "f1_score",
+        "robustness_score",
+        "inference_latency_ms",
+        "security_pass_rate"
+      ]
+    },
+    "api": {
+      "host": "0.0.0.0",
+      "port": 8000,
+      "workers": 1,
+      "reload": false
+    }
+  },
+  "dataset": {
+    "name": "credit_fraud",
+    "source": "file",
+    "n_samples": 500,
+    "n_features": 10,
+    "task_type": "classification",
+    "n_classes": 2,
+    "class_distribution": {
+      "1": 250,
+      "0": 250
+    }
+  },
+  "data_quality": {
+    "schema": {
+      "passed": true,
+      "errors": []
+    },
+    "missing": {
+      "total_missing": 0,
+      "by_column": {},
+      "passed": true
+    },
+    "duplicates": {
+      "n_duplicates": 0,
+      "passed": "True"
+    },
+    "class_balance": {
+      "class_distribution": {
+        "1": 0.5,
+        "0": 0.5
+      },
+      "min_class_ratio": 0.5,
+      "passed": true
+    },
+    "overall_passed": true
+  },
+  "models": {
+    "decision_tree": {
+      "algorithm": "decision_tree",
+      "run_id": "6ad38878b5f24783be907d12842d9274",
+      "model_path": "models\\decision_tree.joblib",
+      "hyperparams": {},
+      "metrics": {
+        "accuracy": 0.87,
+        "precision": 0.8775510204081632,
+        "recall": 0.86,
+        "f1": 0.8686868686868687,
+        "roc_auc": 0.8699999999999999,
+        "latency_p50_ms": 0.0806500001999666,
+        "latency_p95_ms": 0.14846499962004595,
+        "latency_p99_ms": 0.23628899938557826,
+        "training_time_sec": 0.004922399999486515,
+        "optimal_threshold": 0.95,
+        "baseline_f1": 0.8686868686868687,
+        "baseline_precision": 0.8775510204081632,
+        "baseline_recall": 0.86,
+        "confusion_matrix": null
+      }
+    },
+    "logistic_regression": {
+      "algorithm": "logistic_regression",
+      "run_id": "710abfa1e8694bc3a905dc392b1e6c86",
+      "model_path": "models\\logistic_regression.joblib",
+      "hyperparams": {
+        "C": 1.0,
+        "max_iter": 1000,
+        "solver": "lbfgs"
+      },
+      "metrics": {
+        "accuracy": 0.84,
+        "precision": 0.8148148148148148,
+        "recall": 0.88,
+        "f1": 0.8461538461538461,
+        "roc_auc": 0.9308000000000001,
+        "latency_p50_ms": 0.06324999958451372,
+        "latency_p95_ms": 0.12514000045484858,
+        "latency_p99_ms": 0.22386099974028179,
+        "training_time_sec": 0.006116800001109368,
+        "optimal_threshold": 0.32864596229171517,
+        "baseline_f1": 0.8421052631578947,
+        "baseline_precision": 0.8888888888888888,
+        "baseline_recall": 0.8,
+        "confusion_matrix": null
+      }
+    }
+  },
+  "best_model": {
+    "algorithm": "decision_tree",
+    "run_id": "6ad38878b5f24783be907d12842d9274",
+    "model_path": "models\\decision_tree.joblib",
+    "optimal_threshold": 0.95,
+    "metrics": {
+      "accuracy": 0.87,
+      "precision": 0.8775510204081632,
+      "recall": 0.86,
+      "f1": 0.8686868686868687,
+      "roc_auc": 0.8699999999999999,
+      "latency_p50_ms": 0.0806500001999666,
+      "latency_p95_ms": 0.14846499962004595,
+      "latency_p99_ms": 0.23628899938557826,
+      "training_time_sec": 0.004922399999486515,
+      "optimal_threshold": 0.95,
+      "baseline_f1": 0.8686868686868687,
+      "baseline_precision": 0.8775510204081632,
+      "baseline_recall": 0.86,
+      "confusion_matrix": null
+    }
+  },
+  "security": {
+    "overall_passed": true,
+    "overall_score": 0.974,
+    "gate_results": [
+      {
+        "gate": "dependency_audit",
+        "passed": true,
+        "score": 1.0,
+        "duration_seconds": 0.06973900000048161,
+        "details": {
+          "total_vulnerabilities": 0,
+          "critical": 0,
+          "high": 0,
+          "max_critical_allowed": 0,
+          "max_high_allowed": 2
+        }
+      },
+      {
+        "gate": "secrets_scan",
+        "passed": true,
+        "score": 1.0,
+        "duration_seconds": 0.06383670000104757,
+        "details": {
+          "high_severity": 0,
+          "medium_severity": 0,
+          "total_issues": 0,
+          "findings": []
+        }
+      },
+      {
+        "gate": "data_integrity",
+        "passed": true,
+        "score": 1.0,
+        "duration_seconds": 0.0004332000007707393,
+        "details": {
+          "js_divergence": 0.0,
+          "estimated_flip_rate": 0.0,
+          "feature_anomaly_rate": 0.0,
+          "threshold": 0.05
+        }
+      },
+      {
+        "gate": "adversarial_robustness",
+        "passed": true,
+        "score": 0.87,
+        "duration_seconds": 0.0027876000003743684,
+        "details": {
+          "epsilon": 0.1,
+          "n_samples": 500,
+          "adv_accuracy": 0.87,
+          "min_required": 0.7,
+          "method": "fgsm_finite_diff"
+        }
+      },
+      {
+        "gate": "model_integrity",
+        "passed": true,
+        "score": 1.0,
+        "duration_seconds": 0.003160399999615038,
+        "details": {
+          "model_path": "models\\decision_tree.joblib",
+          "sha256": "dbf14ce7e9146616d875aa81ebf5ed1ddcac9ca63fe9954d07162eea6e308c4f",
+          "matched": true
+        }
+      }
+    ]
+  },
+  "resources": {
+    "pipeline_execution_time_sec": 42.195124199999555,
+    "cpu_count": 12,
+    "ram_total_gb": 15.7,
+    "ram_used_gb": 10.82,
+    "ram_usage_percent": 68.9
+  },
+  "monitoring": {
+    "drift_threshold": 0.1,
+    "anomaly_detector_active": true
+  },
+  "deployment": {
+    "stage": "Staging",
+    "model_version": "v1.0.0",
+    "registered": false,
+    "api_endpoint": "http://localhost:8000/predict"
+  },
+  "research_metrics": {
+    "f1_score": 0.8686868686868687,
+    "precision": 0.8775510204081632,
+    "recall": 0.86,
+    "accuracy": 0.87,
+    "roc_auc": 0.8699999999999999,
+    "security_compliance": 0.974,
+    "latency_p50_ms": 0.0806500001999666
+  }
+}

@@ -183,8 +183,20 @@ def gate_data_integrity(
     threshold = config["security"].get("poisoning_threshold", 0.05)
 
     # Label distribution comparison
-    ref_counts = np.bincount(y_ref.astype(int), minlength=2) / len(y_ref)
-    cur_counts = np.bincount(y_train.astype(int), minlength=2) / len(y_train)
+    # Detect if targets are continuous (regression) vs discrete (classification)
+    is_continuous = len(np.unique(y_ref)) > 20 or not np.array_equal(y_ref, y_ref.astype(int))
+    
+    if is_continuous:
+        # Use histogram-based comparison for regression targets
+        all_vals = np.concatenate([y_ref, y_train])
+        bins = np.histogram_bin_edges(all_vals, bins=20)
+        ref_counts, _ = np.histogram(y_ref, bins=bins)
+        cur_counts, _ = np.histogram(y_train, bins=bins)
+        ref_counts = ref_counts / (ref_counts.sum() + 1e-10)
+        cur_counts = cur_counts / (cur_counts.sum() + 1e-10)
+    else:
+        ref_counts = np.bincount(y_ref.astype(int), minlength=2) / len(y_ref)
+        cur_counts = np.bincount(y_train.astype(int), minlength=2) / len(y_train)
 
     # Symmetric KL divergence (Jensen-Shannon)
     eps = 1e-10
@@ -243,12 +255,17 @@ def gate_adversarial_robustness(
     X_sample = X_test[idx]
     y_sample = y_test[idx]
 
+    # Detect if regression task (continuous targets)
+    is_continuous = len(np.unique(y_sample)) > 20 or not np.array_equal(y_sample, y_sample.astype(int))
+
     # Finite-difference gradient approximation
     delta = 1e-4
     perturbed = X_sample.copy()
     try:
-        # Use decision_function or predict_proba as surrogate loss
-        if hasattr(model, "decision_function"):
+        if is_continuous:
+            # For regression: use predict as surrogate
+            base = model.predict(X_sample)
+        elif hasattr(model, "decision_function"):
             base = model.decision_function(X_sample)
         else:
             base = model.predict_proba(X_sample)[:, 1]
@@ -257,7 +274,9 @@ def gate_adversarial_robustness(
         for j in range(X_sample.shape[1]):
             X_delta = X_sample.copy()
             X_delta[:, j] += delta
-            if hasattr(model, "decision_function"):
+            if is_continuous:
+                perturbed_score = model.predict(X_delta)
+            elif hasattr(model, "decision_function"):
                 perturbed_score = model.decision_function(X_delta)
             else:
                 perturbed_score = model.predict_proba(X_delta)[:, 1]
@@ -269,7 +288,18 @@ def gate_adversarial_robustness(
         perturbed = X_sample + epsilon * np.sign(np.random.randn(*X_sample.shape))
 
     y_adv_pred = model.predict(perturbed)
-    adv_accuracy = float(accuracy_score(y_sample, y_adv_pred))
+
+    if is_continuous:
+        # For regression: measure how stable predictions are under perturbation
+        from sklearn.metrics import r2_score as _r2_score
+        # Compare adversarial predictions to clean predictions (stability)
+        y_clean_pred = model.predict(X_sample)
+        pred_range = np.ptp(y_clean_pred) + 1e-10
+        mean_shift = np.mean(np.abs(y_adv_pred - y_clean_pred)) / pred_range
+        adv_accuracy = float(max(0.0, 1.0 - mean_shift))
+    else:
+        adv_accuracy = float(accuracy_score(y_sample, y_adv_pred))
+
     passed = adv_accuracy >= min_score
 
     return SecurityGateResult(

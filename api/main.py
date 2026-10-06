@@ -322,6 +322,7 @@ class RunPipelineRequest(BaseModel):
     target_column: Optional[str] = "target"
     opt_metric: Optional[str] = "f1"
     models_to_train: Optional[List[str]] = ["logistic_regression", "random_forest", "gradient_boosting"]
+    task_type: Optional[str] = "classification"
 
 @app.post("/experiments/run", tags=["Experiments"])
 def run_experiment(background_tasks: BackgroundTasks, req: RunPipelineRequest = None):
@@ -330,6 +331,7 @@ def run_experiment(background_tasks: BackgroundTasks, req: RunPipelineRequest = 
     if req:
         # Override config based on request
         cfg["dataset"]["target_column"] = req.target_column
+        cfg["dataset"]["task_type"] = req.task_type
         cfg["training"]["optimization_metric"] = req.opt_metric
         cfg["training"]["algorithms"] = req.models_to_train
         
@@ -387,11 +389,67 @@ def download_experiment_model(experiment_id: str):
         
     model_path = exp_dir / "best_model.joblib"
     pipe_path = exp_dir / "feature_pipeline.joblib"
+    result_path = exp_dir / "experiment_result.json"
     
     if not model_path.exists():
         raise HTTPException(status_code=404, detail="Model artifact not found for this experiment")
         
-    # Create zip file in-memory
+    # Generate the deployable project files
+    fastapi_code = f"""
+from fastapi import FastAPI
+import joblib
+import pandas as pd
+from pydantic import BaseModel
+from typing import List, Any
+
+app = FastAPI(title="Deployed ML Model")
+model = joblib.load("best_model.joblib")
+try:
+    pipeline = joblib.load("feature_pipeline.joblib")
+except:
+    pipeline = None
+
+class PredictRequest(BaseModel):
+    features: List[List[Any]]
+
+@app.post("/predict")
+def predict(req: PredictRequest):
+    df = pd.DataFrame(req.features)
+    if pipeline:
+        X = pipeline.transform(df)
+    else:
+        X = df.values
+    preds = model.predict(X)
+    return {{"predictions": preds.tolist()}}
+"""
+    
+    requirements_txt = """fastapi==0.103.2
+uvicorn==0.23.2
+scikit-learn==1.3.1
+pandas==2.1.1
+numpy==1.26.0
+joblib==1.3.2
+pydantic==2.4.2
+xgboost==2.0.0
+"""
+    
+    readme_md = f"""# Deployed ML Model: {experiment_id}
+    
+## How to run
+1. Install dependencies: `pip install -r requirements.txt`
+2. Run server: `uvicorn app:app --host 0.0.0.0 --port 8000`
+
+## API Usage
+POST to `/predict` with payload:
+```json
+{{
+    "features": [
+        [feature1, feature2, ...]
+    ]
+}}
+```
+"""
+
     import io
     import zipfile
     
@@ -400,6 +458,12 @@ def download_experiment_model(experiment_id: str):
         zip_file.write(model_path, "best_model.joblib")
         if pipe_path.exists():
             zip_file.write(pipe_path, "feature_pipeline.joblib")
+        if result_path.exists():
+            zip_file.write(result_path, "experiment_result.json")
+            
+        zip_file.writestr("app.py", fastapi_code.strip())
+        zip_file.writestr("requirements.txt", requirements_txt.strip())
+        zip_file.writestr("README.md", readme_md.strip())
             
     zip_buffer.seek(0)
     
@@ -407,7 +471,7 @@ def download_experiment_model(experiment_id: str):
     return StreamingResponse(
         zip_buffer,
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename=model_{experiment_id}.zip"}
+        headers={"Content-Disposition": f"attachment; filename=ml_project_{experiment_id}.zip"}
     )
 
 @app.post("/experiments/{experiment_id}/model/load", tags=["Experiments"])
@@ -449,8 +513,8 @@ async def upload_dataset(file: UploadFile = File(...)):
         with open(config_path, "r") as f:
             yaml_cfg = yaml.safe_load(f)
             
-        yaml_cfg["dataset"]["source"] = "csv"
-        yaml_cfg["dataset"]["csv_path"] = str(file_path)
+        yaml_cfg["dataset"]["source"] = "file"
+        yaml_cfg["dataset"]["file_path"] = str(file_path)
         
         with open(config_path, "w") as f:
             yaml.dump(yaml_cfg, f, default_flow_style=False, sort_keys=False)

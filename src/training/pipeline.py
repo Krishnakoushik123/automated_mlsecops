@@ -18,6 +18,7 @@ import logging
 import time
 from pathlib import Path
 
+import joblib
 import mlflow
 import numpy as np
 
@@ -92,8 +93,17 @@ def run_pipeline(
     logger.info("=" * 60)
     sec_results = []
     if results:
-        opt_metric = f"test_{config['training'].get('optimization_metric', 'f1')}"
-        best = max(results, key=lambda r: r["metrics"].get(opt_metric, 0))
+        task_type = config.get("dataset", {}).get("task_type", "classification")
+        if task_type == "classification":
+            opt_metric = f"test_{config['training'].get('optimization_metric', 'f1')}"
+            best = max(results, key=lambda r: r["metrics"].get(opt_metric, 0))
+        else:
+            opt_metric = f"test_{config['training'].get('optimization_metric', 'rmse')}"
+            if opt_metric in ["test_rmse", "test_mae"]:
+                best = min(results, key=lambda r: r["metrics"].get(opt_metric, float('inf')))
+            else:
+                best = max(results, key=lambda r: r["metrics"].get(opt_metric, -float('inf')))
+                
         best_algo = best["algorithm"]
         best_model_path = Path(best["model_path"])
         best_model_obj = build_model(
@@ -136,8 +146,16 @@ def run_pipeline(
         logger.info("=" * 60)
         logger.info("STAGE 6 / MODEL REGISTRY")
         logger.info("=" * 60)
-        opt_metric = f"test_{config['training'].get('optimization_metric', 'f1')}"
-        best = max(results, key=lambda r: r["metrics"].get(opt_metric, 0))
+        if task_type == "classification":
+            opt_metric = f"test_{config['training'].get('optimization_metric', 'f1')}"
+            best = max(results, key=lambda r: r["metrics"].get(opt_metric, 0))
+        else:
+            opt_metric = f"test_{config['training'].get('optimization_metric', 'rmse')}"
+            if opt_metric in ["test_rmse", "test_mae"]:
+                best = min(results, key=lambda r: r["metrics"].get(opt_metric, float('inf')))
+            else:
+                best = max(results, key=lambda r: r["metrics"].get(opt_metric, -float('inf')))
+                
         logger.info(
             "Best model: %s  (%s=%.4f)",
             best["algorithm"],
@@ -172,14 +190,17 @@ def run_pipeline(
     logger.info("=" * 60)
 
     # Construct and persist standardized experiment result payload
+    task_type = config.get("dataset", {}).get("task_type", "classification")
     dataset_meta = {
         "name": config["dataset"].get("name", "credit_fraud"),
         "source": config["dataset"].get("source", "sklearn"),
         "n_samples": len(X),
         "n_features": X.shape[1],
-        "n_classes": len(np.unique(y)),
-        "class_distribution": {str(k): int(v) for k, v in y.value_counts().items()},
+        "task_type": task_type,
     }
+    if task_type == "classification":
+        dataset_meta["n_classes"] = len(np.unique(y))
+        dataset_meta["class_distribution"] = {str(k): int(v) for k, v in y.value_counts().items()}
 
     std_result = create_standard_experiment_result(
         experiment_id=experiment_id,

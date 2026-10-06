@@ -5,39 +5,168 @@ import time
 import plotly.express as px
 import plotly.graph_objects as go
 from api_client import APIClient
+from io import BytesIO
 
-st.set_page_config(page_title="MLSecOps Dashboard", page_icon="🛡️", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Automated Secure MLOps", page_icon="🛡️", layout="wide", initial_sidebar_state="expanded")
 
-# --- Custom CSS ---
+# --- Modern Custom CSS ---
 st.markdown("""
 <style>
-    .metric-card {
-        background-color: #1E1E2E;
-        padding: 20px;
-        border-radius: 10px;
-        border: 1px solid #2A2A3C;
-        margin-bottom: 20px;
-        text-align: center;
+    :root {
+        --primary-color: #4F46E5;
+        --secondary-color: #10B981;
+        --bg-color: #0F172A;
+        --card-bg: #1E293B;
+        --text-primary: #F8FAFC;
+        --text-secondary: #94A3B8;
+        --border-color: #334155;
     }
+    
+    .stApp {
+        background-color: var(--bg-color);
+        color: var(--text-primary);
+    }
+    
+    .metric-card {
+        background-color: var(--card-bg);
+        padding: 24px;
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+        margin-bottom: 24px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    
+    .metric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+    
     .metric-title {
-        color: #A0A0B0;
+        color: var(--text-secondary);
         font-size: 14px;
         font-weight: 600;
-        margin-bottom: 5px;
+        margin-bottom: 8px;
         text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
+    
     .metric-value {
-        color: #FFFFFF;
-        font-size: 28px;
+        color: var(--text-primary);
+        font-size: 32px;
         font-weight: 700;
+        line-height: 1.2;
     }
-    .status-pass { color: #4CAF50; font-weight: bold; }
-    .status-fail { color: #F44336; font-weight: bold; }
-    .status-warn { color: #FF9800; font-weight: bold; }
+    
+    .status-pass { color: #10B981; }
+    .status-fail { color: #EF4444; }
+    .status-warn { color: #F59E0B; }
+    .status-running { color: #3B82F6; }
+    
+    /* Progress Tracker Styles */
+    .pipeline-container {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 40px 0;
+        padding: 20px;
+        background: var(--card-bg);
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+    }
+    
+    .pipeline-step {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        flex: 1;
+        position: relative;
+    }
+    
+    .pipeline-step:not(:last-child)::after {
+        content: '';
+        position: absolute;
+        top: 20px;
+        right: -50%;
+        width: 100%;
+        height: 3px;
+        background: var(--border-color);
+        z-index: 1;
+    }
+    
+    .pipeline-step.completed:not(:last-child)::after {
+        background: var(--secondary-color);
+    }
+    
+    .step-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--bg-color);
+        border: 2px solid var(--border-color);
+        color: var(--text-secondary);
+        font-size: 18px;
+        z-index: 2;
+        margin-bottom: 10px;
+        transition: all 0.3s ease;
+    }
+    
+    .pipeline-step.completed .step-icon {
+        background: var(--secondary-color);
+        border-color: var(--secondary-color);
+        color: white;
+    }
+    
+    .pipeline-step.running .step-icon {
+        background: var(--primary-color);
+        border-color: var(--primary-color);
+        color: white;
+        animation: pulse 2s infinite;
+    }
+    
+    .pipeline-step.failed .step-icon {
+        background: #EF4444;
+        border-color: #EF4444;
+        color: white;
+    }
+    
+    .step-label {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        text-align: center;
+    }
+    
+    .pipeline-step.running .step-label { color: var(--primary-color); }
+    .pipeline-step.completed .step-label { color: var(--secondary-color); }
+    .pipeline-step.failed .step-label { color: #EF4444; }
+    
+    @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.4); }
+        70% { box-shadow: 0 0 0 10px rgba(79, 70, 229, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0); }
+    }
+    
+    .btn-primary {
+        background: linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%);
+        color: white;
+        border: none;
+        padding: 10px 24px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity 0.2s;
+        text-decoration: none;
+        display: inline-block;
+        text-align: center;
+    }
+    .btn-primary:hover { opacity: 0.9; }
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize API Client
 api = APIClient()
 
 def render_metric(title, value, color_class=""):
@@ -48,304 +177,347 @@ def render_metric(title, value, color_class=""):
     </div>
     """, unsafe_allow_html=True)
 
-# --- Sidebar ---
-st.sidebar.title("🛡️ MLSecOps")
-st.sidebar.markdown("---")
-page = st.sidebar.radio("Navigation", [
-    "Dashboard", 
-    "New Experiment", 
-    "Experiments", 
-    "Models", 
-    "Monitoring", 
-    "Reports"
-])
+def render_pipeline_tracker(status):
+    stages = [
+        ("Data Validation", "📊"),
+        ("Preprocessing", "⚙️"),
+        ("Training", "🧠"),
+        ("Evaluation", "📈"),
+        ("Security", "🛡️"),
+        ("Deployment", "🚀")
+    ]
+    
+    # Map backend status to UI stages
+    if status == "QUEUED":
+        current_stage = 0
+    elif status == "RUNNING":
+        current_stage = 2 # Simplify for now, animation shows it's working
+    elif status == "COMPLETED":
+        current_stage = len(stages)
+    elif status == "FAILED":
+        current_stage = -1
+    else:
+        current_stage = 0
 
-# Use session state to navigate directly to an experiment if selected
+    html = '<div class="pipeline-container">'
+    for i, (label, icon) in enumerate(stages):
+        state = ""
+        if current_stage == -1:
+            state = "failed" if i == 2 else "completed" if i < 2 else ""
+        elif i < current_stage:
+            state = "completed"
+        elif i == current_stage:
+            state = "running"
+            
+        html += f"""
+        <div class="pipeline-step {state}">
+            <div class="step-icon">{icon if state != 'completed' else '✓'}</div>
+            <div class="step-label">{label}</div>
+        </div>
+        """
+    html += '</div>'
+    st.markdown(html, unsafe_allow_html=True)
+
+# --- Sidebar ---
+with st.sidebar:
+    st.markdown("## 🛡️ Secure MLOps")
+    st.markdown("Automated pipeline for training, securing, and deploying ML models.")
+    st.markdown("---")
+    page = st.radio("Navigation", ["Dashboard", "New Experiment", "Results", "Monitoring"], label_visibility="collapsed")
+    st.markdown("---")
+    
+    if st.button("🔄 Check API Status", use_container_width=True):
+        health = api.get_health()
+        if health:
+            st.success("API Online")
+        else:
+            st.error("API Offline")
+
 if "selected_experiment_id" not in st.session_state:
     st.session_state["selected_experiment_id"] = "latest"
 
-if st.sidebar.button("Check API Connection"):
-    health = api.get_health()
-    if health:
-        st.sidebar.success(f"Connected! API Status: {health.get('status')}")
-    else:
-        st.sidebar.error("Failed to connect to backend.")
-
-# --- Page: Dashboard ---
+# --- Dashboard ---
 if page == "Dashboard":
-    st.title("System Dashboard")
+    st.title("System Overview")
     
     exps = api.get_experiments()
     if not exps:
-        st.info("No experiments found in the system. Go to 'New Experiment' to start one.")
+        st.info("No experiments found. Start a new experiment to begin.")
     else:
         total = len(exps)
         success = sum(1 for e in exps if e.get("status") == "COMPLETED")
         failed = sum(1 for e in exps if e.get("status") == "FAILED")
-        sec_alerts = sum(1 for e in exps if e.get("security_score", 1.0) < 1.0)
         
-        col1, col2, col3, col4 = st.columns(4)
-        with col1: render_metric("Total Experiments", total)
-        with col2: render_metric("Successful Runs", success, "status-pass")
-        with col3: render_metric("Failed Runs", failed, "status-fail")
-        with col4: render_metric("Security Alerts", sec_alerts, "status-warn" if sec_alerts > 0 else "status-pass")
+        c1, c2, c3 = st.columns(3)
+        with c1: render_metric("Total Experiments", total)
+        with c2: render_metric("Successful Deployments", success, "status-pass")
+        with c3: render_metric("Failed Runs", failed, "status-fail")
         
-        st.subheader("Recent Experiments")
+        st.markdown("### Recent Activity")
         df_exps = pd.DataFrame(exps)
-        st.dataframe(df_exps.head(10), use_container_width=True)
+        if not df_exps.empty:
+            cols = ["experiment_id", "status"]
+            if "dataset" in df_exps.columns:
+                df_exps["dataset_name"] = df_exps["dataset"].apply(lambda x: x.get("name") if isinstance(x, dict) else "Unknown")
+                cols.append("dataset_name")
+            st.dataframe(df_exps[cols].head(10), use_container_width=True)
 
-# --- Page: New Experiment ---
+# --- New Experiment ---
 elif page == "New Experiment":
-    st.title("New Experiment")
+    st.title("New Automation Run")
+    st.markdown("Upload your dataset and configure the ML pipeline.")
     
-    st.markdown("### 1. Dataset Configuration")
-    uploaded_file = st.file_uploader("Upload CSV Dataset", type="csv")
-    
-    if uploaded_file:
-        df = pd.read_csv(uploaded_file)
-        st.markdown("**Dataset Preview**")
-        st.dataframe(df.head(5), use_container_width=True)
-        st.markdown(f"**Shape:** {df.shape[0]} rows, {df.shape[1]} columns")
+    with st.container():
+        st.markdown("### 1. Upload Dataset")
+        uploaded_file = st.file_uploader("Select dataset", type=["csv", "xlsx", "xls", "json", "parquet"], help="Supported formats: CSV, Excel, JSON, Parquet")
         
-        target_col = st.selectbox("Select Target Column", df.columns.tolist(), index=len(df.columns)-1)
-        opt_metric = st.selectbox("Optimization Metric", ["f1", "roc_auc", "accuracy", "precision", "recall"])
-        
-        models_to_train = st.multiselect("Models to Train", ["logistic_regression", "random_forest", "gradient_boosting"], default=["logistic_regression", "random_forest", "gradient_boosting"])
-        
-        if st.button("🚀 Run Secure Pipeline", type="primary"):
-            with st.spinner("Uploading dataset and preparing environment..."):
-                uploaded_file.seek(0)
-                res = api.upload_dataset(uploaded_file.name, uploaded_file.getvalue())
+        if uploaded_file:
+            try:
+                ext = uploaded_file.name.split(".")[-1].lower()
+                if ext == "csv": df = pd.read_csv(uploaded_file)
+                elif ext in ["xlsx", "xls"]: df = pd.read_excel(uploaded_file)
+                elif ext == "json": df = pd.read_json(uploaded_file)
+                elif ext == "parquet": df = pd.read_parquet(uploaded_file)
                 
-                if res and res.get("status") == "success":
-                    st.success("Dataset uploaded successfully.")
+                st.success(f"Loaded {df.shape[0]} rows and {df.shape[1]} columns")
+                st.dataframe(df.head(), use_container_width=True)
+                
+                st.markdown("### 2. Configuration")
+                c1, c2 = st.columns(2)
+                
+                with c1:
+                    target_col = st.selectbox("Target Column", df.columns.tolist(), index=len(df.columns)-1)
                     
-                    run_res = api.run_pipeline(
-                        target_column=target_col,
-                        opt_metric=opt_metric,
-                        models_to_train=models_to_train
-                    )
+                    # Auto-detect task type
+                    is_numeric = pd.api.types.is_numeric_dtype(df[target_col])
+                    n_unique = df[target_col].nunique()
                     
-                    if run_res and "experiment_id" in run_res:
-                        st.session_state["polling_exp_id"] = run_res["experiment_id"]
-                        st.success(f"Pipeline triggered: {run_res['experiment_id']}")
-                        st.rerun()
+                    if is_numeric and n_unique > 15:
+                        task_type = "regression"
                     else:
-                        st.error("Failed to start pipeline.")
-                else:
-                    st.error("Failed to upload dataset.")
+                        task_type = "classification"
+                        
+                    task_type = st.selectbox("Task Type", ["classification", "regression"], index=0 if task_type=="classification" else 1)
+                
+                with c2:
+                    if task_type == "classification":
+                        metrics = ["f1", "roc_auc", "accuracy", "precision", "recall"]
+                        algos = {
+                            "Logistic Regression": "logistic_regression",
+                            "Random Forest": "random_forest",
+                            "Gradient Boosting": "gradient_boosting",
+                            "Decision Tree": "decision_tree",
+                            "SVM": "svm",
+                            "KNN": "knn",
+                            "XGBoost": "xgboost"
+                        }
+                    else:
+                        metrics = ["rmse", "mae", "r2"]
+                        algos = {
+                            "Linear Regression": "linear_regression",
+                            "Random Forest Regressor": "random_forest_regressor",
+                            "Gradient Boosting Regressor": "gradient_boosting_regressor",
+                            "Decision Tree Regressor": "decision_tree_regressor",
+                            "SVM Regressor": "svm_regressor",
+                            "KNN Regressor": "knn_regressor",
+                            "XGBoost Regressor": "xgboost_regressor"
+                        }
                     
+                    opt_metric = st.selectbox("Optimization Metric", metrics)
+                    selected_algos_names = st.multiselect("Algorithms to Train", list(algos.keys()), default=list(algos.keys())[:3])
+                    selected_algos = [algos[name] for name in selected_algos_names]
+                
+                if st.button("🚀 Start Automation Pipeline", type="primary", use_container_width=True):
+                    if not selected_algos:
+                        st.error("Please select at least one algorithm.")
+                    else:
+                        with st.spinner("Initializing MLSecOps Pipeline..."):
+                            uploaded_file.seek(0)
+                            res = api.upload_dataset(uploaded_file.name, uploaded_file.getvalue())
+                            
+                            if res and res.get("status") == "success":
+                                run_res = api.run_pipeline(
+                                    target_column=target_col,
+                                    opt_metric=opt_metric,
+                                    models_to_train=selected_algos,
+                                    task_type=task_type
+                                )
+                                
+                                if run_res and "experiment_id" in run_res:
+                                    st.session_state["polling_exp_id"] = run_res["experiment_id"]
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to start pipeline backend.")
+                            else:
+                                st.error("Failed to upload dataset to backend.")
+            except Exception as e:
+                st.error(f"Error reading file: {e}")
+
+    # Polling logic
     if "polling_exp_id" in st.session_state:
         exp_id = st.session_state["polling_exp_id"]
-        st.markdown(f"**Tracking Experiment:** `{exp_id}`")
+        st.markdown("---")
+        st.markdown(f"### Pipeline Status: `{exp_id}`")
         
-        # Pipeline Stages visualization
-        stages = ["Validation", "Preprocessing", "Training", "Evaluation", "Security", "Model Validation", "Deployment"]
-        cols = st.columns(len(stages))
-        
-        status_box = st.empty()
+        status_placeholder = st.empty()
+        tracker_placeholder = st.empty()
         
         while True:
             exp_data = api.get_experiment(exp_id)
             if not exp_data:
-                status_box.error("Failed to fetch status. Retrying...")
+                status_placeholder.warning("Waiting for pipeline to initialize...")
                 time.sleep(2)
                 continue
                 
             status = exp_data.get("status", "UNKNOWN")
             
-            # Simple UI update for stages based on status
-            for i, stage in enumerate(stages):
-                with cols[i]:
-                    if status == "QUEUED":
-                        st.markdown(f"⏳ {stage}")
-                    elif status == "RUNNING":
-                        st.markdown(f"🔄 {stage}")
-                    elif status == "COMPLETED":
-                        st.markdown(f"✅ {stage}")
-                    elif status == "FAILED":
-                        st.markdown(f"❌ {stage}")
-                        
-            status_box.info(f"**Status:** {status}")
-            
+            with tracker_placeholder:
+                render_pipeline_tracker(status)
+                
             if status in ["COMPLETED", "FAILED"]:
                 st.session_state["selected_experiment_id"] = exp_id
                 if status == "COMPLETED":
-                    st.success("Experiment completed successfully! Navigate to 'Experiments' or 'Reports' to view.")
+                    status_placeholder.success("✨ Pipeline completed successfully! View full details in the Results tab.")
                 else:
-                    st.error(f"Experiment failed: {exp_data.get('error', 'Unknown error')}")
+                    status_placeholder.error(f"❌ Pipeline failed: {exp_data.get('error', 'Unknown error')}")
                 del st.session_state["polling_exp_id"]
                 break
                 
-            time.sleep(2)
+            status_placeholder.info("⏳ Processing... please wait.")
+            time.sleep(2.5)
 
-# --- Page: Experiments (Details) ---
-elif page == "Experiments":
-    st.title("Experiment Details")
+# --- Results ---
+elif page == "Results":
+    st.title("Experiment Results")
     
     exps = api.get_experiments()
     if not exps:
-        st.info("No experiments available.")
+        st.info("No completed experiments available.")
     else:
-        exp_options = ["latest"] + [e["experiment_id"] for e in exps if "experiment_id" in e]
-        selected = st.selectbox("Select Experiment", exp_options, 
-                                index=exp_options.index(st.session_state["selected_experiment_id"]) if st.session_state["selected_experiment_id"] in exp_options else 0)
-        
-        st.session_state["selected_experiment_id"] = selected
-        exp = api.get_experiment(selected)
-        
-        if not exp:
-            st.error(f"Could not load data for experiment {selected}")
-        elif exp.get("status") in ["QUEUED", "RUNNING"]:
-            st.info(f"Experiment {selected} is currently {exp.get('status')}...")
-        elif exp.get("status") == "FAILED":
-            st.error(f"Experiment {selected} Failed.")
-            st.code(exp.get("error_message", "Unknown error"))
+        exp_options = [e["experiment_id"] for e in exps if "experiment_id" in e]
+        if not exp_options:
+            st.warning("No valid experiments found.")
         else:
-            # Main experiment view tabs
-            t_over, t_perf, t_sec, t_res, t_pipe = st.tabs(["Overview", "Performance", "Security", "Resources", "Pipeline"])
+            default_idx = 0
+            if st.session_state["selected_experiment_id"] in exp_options:
+                default_idx = exp_options.index(st.session_state["selected_experiment_id"])
+                
+            selected = st.selectbox("Select Run", exp_options, index=default_idx)
+            st.session_state["selected_experiment_id"] = selected
             
-            with t_over:
-                st.subheader(f"Experiment: {exp.get('experiment_id')}")
-                c1, c2, c3 = st.columns(3)
+            exp = api.get_experiment(selected)
+            
+            if not exp:
+                st.error("Failed to load experiment data.")
+            elif exp.get("status") == "FAILED":
+                st.error("This experiment failed.")
+                st.code(exp.get("error_message", "Unknown error"))
+            elif exp.get("status") in ["QUEUED", "RUNNING"]:
+                st.info("Experiment is currently running. Please wait.")
+            else:
+                # Main Results View
+                st.markdown("---")
+                c1, c2 = st.columns([2, 1])
+                
                 ds = exp.get("dataset", {})
                 bm = exp.get("best_model", {})
-                c1.metric("Dataset", ds.get("name", "N/A"), f"{ds.get('n_samples', 0)} samples")
-                c2.metric("Best Model", bm.get("algorithm", "N/A"))
-                c3.metric("Status", exp.get("status", "N/A"))
-                
-                st.markdown("### Deployment & Delivery")
-                st.markdown("Ensure security gates have passed before deploying.")
-                c4, c5 = st.columns([1, 1])
-                with c4:
-                    if st.button("Load Model for /predict"):
-                        load_res = api.load_model(selected)
-                        if load_res and load_res.get("status") == "success":
-                            st.success("Model successfully loaded into inference engine.")
-                        else:
-                            st.error("Failed to load model.")
-                with c5:
-                    download_url = api.get_model_download_url(selected)
-                    st.markdown(f'<a href="{download_url}" download><button style="padding: 0.5rem 1rem; border-radius: 0.5rem; border: none; background-color: #4CAF50; color: white; cursor: pointer;">Download Model Artifacts</button></a>', unsafe_allow_html=True)
-
-            with t_perf:
-                rm = exp.get("research_metrics", {})
-                st.subheader("Final Performance")
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("F1 Score", f"{rm.get('f1_score', 0):.4f}")
-                c2.metric("Precision", f"{rm.get('precision', 0):.4f}")
-                c3.metric("Recall", f"{rm.get('recall', 0):.4f}")
-                c4.metric("Accuracy", f"{rm.get('accuracy', 0):.4f}")
-                
-                models = exp.get("models", {})
-                if models:
-                    st.markdown("### Model Comparison")
-                    comp_data = []
-                    for algo, data in models.items():
-                        m = data.get("metrics", {})
-                        comp_data.append({
-                            "Algorithm": algo,
-                            "F1": m.get("f1", 0),
-                            "ROC-AUC": m.get("roc_auc", 0),
-                            "Latency (ms)": m.get("latency_p95_ms", 0)
-                        })
-                    df_comp = pd.DataFrame(comp_data)
-                    fig = px.bar(df_comp, x="Algorithm", y="F1", color="F1", title="Algorithm F1 Scores")
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    st.markdown("### Confusion Matrix (Best Model)")
-                    cm = bm.get("metrics", {}).get("confusion_matrix")
-                    if cm:
-                        fig_cm = px.imshow(cm, text_auto=True, color_continuous_scale="Blues")
-                        st.plotly_chart(fig_cm)
-
-            with t_sec:
-                st.subheader("Security Assessment")
-                st.metric("Overall Security Score", f"{sec.get('overall_score', 0)*100:.1f}%")
-                if sec.get("overall_passed"):
-                    st.success("Model PASSED all security gates.")
-                else:
-                    st.error("Model FAILED one or more security gates. Deployment BLOCKED.")
-                
-                st.markdown("### Gate Results")
-                for g in sec.get("gate_results", []):
-                    status = "✅ PASS" if g.get("passed") else "❌ FAIL"
-                    with st.expander(f"{status} - {g.get('gate')} (Score: {g.get('score', 0)})"):
-                        st.json(g.get("details", {}))
-                        
-            with t_res:
+                sec = exp.get("security", {})
                 res = exp.get("resources", {})
-                st.subheader("Resource Usage")
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Pipeline Duration", f"{res.get('pipeline_duration_sec', 0):.2f}s")
-                c2.metric("CPU Count", res.get("cpu_count", 0))
-                c3.metric("RAM Available", f"{res.get('ram_available_gb', 0):.1f} GB")
+                task_type = ds.get("task_type", "classification")
                 
-            with t_pipe:
-                st.subheader("Pipeline Execution Summary")
-                st.json(exp.get("data_quality", {}))
+                with c1:
+                    st.markdown("### 🏆 Best Model")
+                    st.markdown(f"**Algorithm:** `{bm.get('algorithm', 'N/A')}`")
+                    
+                    st.markdown("### 📊 Performance")
+                    rm = exp.get("research_metrics", {})
+                    metrics_cols = st.columns(4)
+                    
+                    if task_type == "classification":
+                        metrics_cols[0].metric("F1 Score", f"{rm.get('f1_score', 0):.4f}")
+                        metrics_cols[1].metric("Accuracy", f"{rm.get('accuracy', 0):.4f}")
+                        metrics_cols[2].metric("ROC AUC", f"{rm.get('roc_auc', 0):.4f}")
+                    else:
+                        metrics_cols[0].metric("RMSE", f"{rm.get('rmse', 0):.4f}")
+                        metrics_cols[1].metric("MAE", f"{rm.get('mae', 0):.4f}")
+                        metrics_cols[2].metric("R² Score", f"{rm.get('r2_score', 0):.4f}")
+                        
+                    metrics_cols[3].metric("Inference Latency", f"{rm.get('inference_latency_p95_ms', 0):.2f} ms")
+                    
+                    # Model Comparison Chart
+                    models = exp.get("models", {})
+                    if models:
+                        st.markdown("### 📈 Model Comparison")
+                        comp_data = []
+                        for algo, data in models.items():
+                            m = data.get("metrics", {})
+                            if task_type == "classification":
+                                comp_data.append({
+                                    "Algorithm": algo,
+                                    "Score": m.get("test_f1", 0),
+                                    "Metric": "F1 Score"
+                                })
+                            else:
+                                comp_data.append({
+                                    "Algorithm": algo,
+                                    "Score": m.get("test_r2", 0),
+                                    "Metric": "R² Score"
+                                })
+                        df_comp = pd.DataFrame(comp_data)
+                        fig = px.bar(df_comp, x="Algorithm", y="Score", color="Score", color_continuous_scale="Viridis")
+                        fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", font_color="white")
+                        st.plotly_chart(fig, use_container_width=True)
 
-# --- Page: Models ---
-elif page == "Models":
-    st.title("Registered Models")
-    
-    exps = api.get_experiments()
-    models_list = []
-    for e in exps:
-        exp = api.get_experiment(e.get("experiment_id"))
-        if exp and exp.get("best_model"):
-            dep = exp.get("deployment", {})
-            models_list.append({
-                "Experiment": exp.get("experiment_id"),
-                "Algorithm": exp.get("best_model", {}).get("algorithm"),
-                "F1 Score": exp.get("research_metrics", {}).get("f1_score", 0),
-                "Stage": dep.get("stage", "None"),
-                "Version": dep.get("model_version", "None")
-            })
-            
-    if models_list:
-        st.dataframe(pd.DataFrame(models_list), use_container_width=True)
-    else:
-        st.info("No registered models found.")
+                with c2:
+                    st.markdown("### 📦 Deployment")
+                    download_url = api.get_model_download_url(selected)
+                    st.markdown(f"""
+                    <div style="background: var(--card-bg); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); text-align: center;">
+                        <h4 style="margin-top: 0;">Deployable Project</h4>
+                        <p style="color: var(--text-secondary); font-size: 14px;">Includes trained model, preprocessing pipeline, requirements, and FastAPI server.</p>
+                        <a href="{download_url}" class="btn-primary" style="width: 100%;" download>📥 Download ZIP Package</a>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    st.markdown("### 🛡️ Security Check")
+                    sec_score = sec.get("overall_score", 0) * 100
+                    passed = sec.get("overall_passed", False)
+                    color = "status-pass" if passed else "status-fail"
+                    st.markdown(f"""
+                    <div class="metric-card" style="margin-bottom: 0;">
+                        <div class="metric-title">Security Score</div>
+                        <div class="metric-value {color}">{sec_score:.1f}%</div>
+                        <div style="margin-top: 10px; font-weight: 600; color: {'#10B981' if passed else '#EF4444'}">
+                            {'✅ Passed all gates' if passed else '❌ Failed security gates'}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    st.markdown("### ⚙️ Resources")
+                    st.markdown(f"- **Training Time:** {res.get('pipeline_duration_sec', 0):.1f}s")
+                    st.markdown(f"- **CPU Count:** {res.get('cpu_count', 'N/A')}")
+                    st.markdown(f"- **RAM:** {res.get('ram_available_gb', 0):.1f} GB")
 
-# --- Page: Monitoring ---
+# --- Monitoring ---
 elif page == "Monitoring":
-    st.title("Runtime Monitoring")
-    st.markdown("Live operational metrics from the FastAPI backend.")
+    st.title("API Monitoring")
+    st.markdown("Live metrics from the backend inference service.")
     
     stats = api.get_monitoring_stats()
     if stats:
         c1, c2, c3 = st.columns(3)
-        c1.metric("Inference Requests", stats.get("inference_requests", 0))
-        c2.metric("Anomalies Detected", stats.get("anomalies_detected", 0))
-        c3.metric("Avg Latency", f"{stats.get('avg_latency_ms', 0):.2f} ms")
+        with c1: render_metric("Total Requests", stats.get("inference_requests", 0))
+        with c2: render_metric("Anomalies Blocked", stats.get("anomalies_detected", 0), "status-warn")
+        with c3: render_metric("Avg Latency", f"{stats.get('avg_latency_ms', 0):.2f} ms")
         
-        st.markdown("### Raw Prometheus Metrics")
+        st.markdown("### Prometheus Metrics Dump")
         metrics = api.get_metrics()
         if metrics:
-            st.code(metrics, language="text")
+            with st.expander("View Raw Data"):
+                st.code(metrics, language="text")
     else:
-        st.error("Failed to fetch monitoring stats from backend.")
-
-# --- Page: Reports ---
-elif page == "Reports":
-    st.title("Reports & Downloads")
-    
-    exps = api.get_experiments()
-    if not exps:
-        st.info("No experiments to report.")
-    else:
-        exp_id = st.selectbox("Select Experiment", [e["experiment_id"] for e in exps if "experiment_id" in e])
-        exp_data = api.get_experiment(exp_id)
-        
-        if exp_data:
-            st.json(exp_data, expanded=False)
-            
-            json_str = json.dumps(exp_data, indent=2)
-            st.download_button(
-                label="Download JSON Report",
-                data=json_str,
-                file_name=f"{exp_id}_report.json",
-                mime="application/json",
-                type="primary"
-            )
+        st.warning("Monitoring service unavailable. Ensure backend is running.")

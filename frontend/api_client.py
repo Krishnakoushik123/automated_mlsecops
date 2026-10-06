@@ -18,7 +18,10 @@ class APIClient:
             
     def _post(self, endpoint: str, data: Dict = None, files: Dict = None) -> Optional[Any]:
         try:
-            response = requests.post(f"{self.base_url}{endpoint}", json=data, files=files, timeout=10)
+            if files:
+                response = requests.post(f"{self.base_url}{endpoint}", files=files, timeout=30)
+            else:
+                response = requests.post(f"{self.base_url}{endpoint}", json=data, timeout=30)
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -37,18 +40,19 @@ class APIClient:
     def get_experiment(self, experiment_id: str) -> Optional[Dict[str, Any]]:
         return self._get(f"/experiments/{experiment_id}")
 
-    def run_pipeline(self, target_column: str = "target", opt_metric: str = "f1", models_to_train: List[str] = None) -> Optional[Dict[str, Any]]:
+    def run_pipeline(self, target_column: str = "target", opt_metric: str = "f1", models_to_train: List[str] = None, task_type: str = "classification") -> Optional[Dict[str, Any]]:
         if models_to_train is None:
             models_to_train = ["logistic_regression", "random_forest", "gradient_boosting"]
         data = {
             "target_column": target_column,
             "opt_metric": opt_metric,
-            "models_to_train": models_to_train
+            "models_to_train": models_to_train,
+            "task_type": task_type
         }
         return self._post("/experiments/run", data=data)
 
     def upload_dataset(self, file_name: str, file_bytes: bytes) -> Optional[Dict[str, Any]]:
-        files = {"file": (file_name, file_bytes, "text/csv")}
+        files = {"file": (file_name, file_bytes, "application/octet-stream")}
         return self._post("/data/upload", files=files)
 
     def get_metrics(self) -> Optional[str]:

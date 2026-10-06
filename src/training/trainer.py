@@ -24,32 +24,57 @@ import joblib
 import mlflow
 import mlflow.sklearn
 import numpy as np
-from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import StratifiedKFold, cross_validate
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier, GradientBoostingRegressor, RandomForestRegressor
+from sklearn.linear_model import LogisticRegression, LinearRegression
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+from sklearn.svm import SVC, SVR
+from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+from sklearn.model_selection import StratifiedKFold, KFold, cross_validate
 from sklearn.metrics import (
     accuracy_score,
     f1_score,
     precision_score,
     recall_score,
     roc_auc_score,
+    mean_squared_error,
+    mean_absolute_error,
+    r2_score,
 )
+try:
+    from xgboost import XGBClassifier, XGBRegressor
+    HAS_XGB = True
+except ImportError:
+    HAS_XGB = False
 
 from src.utils.config import load_config, get_mlflow_uri
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 # ---------------------------------------------------------------------------
 # Algorithm registry
 # ---------------------------------------------------------------------------
 
 _ALGORITHM_MAP: Dict[str, Any] = {
+    # Classification
     "logistic_regression": LogisticRegression,
     "random_forest": RandomForestClassifier,
     "gradient_boosting": GradientBoostingClassifier,
+    "decision_tree": DecisionTreeClassifier,
+    "svm": SVC,
+    "knn": KNeighborsClassifier,
+    
+    # Regression
+    "linear_regression": LinearRegression,
+    "random_forest_regressor": RandomForestRegressor,
+    "gradient_boosting_regressor": GradientBoostingRegressor,
+    "decision_tree_regressor": DecisionTreeRegressor,
+    "svm_regressor": SVR,
+    "knn_regressor": KNeighborsRegressor,
 }
+if HAS_XGB:
+    _ALGORITHM_MAP["xgboost"] = XGBClassifier
+    _ALGORITHM_MAP["xgboost_regressor"] = XGBRegressor
 
 
 def build_model(algorithm: str, hyperparams: dict, seed: int, class_weight: str | None = "balanced") -> Any:
@@ -76,8 +101,11 @@ def build_model(algorithm: str, hyperparams: dict, seed: int, class_weight: str 
 # Threshold Optimization & Metrics
 # ---------------------------------------------------------------------------
 
-def find_optimal_threshold(model: Any, X_val: np.ndarray, y_val: np.ndarray) -> float:
+def find_optimal_threshold(model: Any, X_val: np.ndarray, y_val: np.ndarray, task_type: str = "classification") -> float:
     """Find threshold in [0.05, 0.95] that maximizes F1 score on validation set for binary tasks."""
+    if task_type != "classification":
+        return 0.5
+    
     unique_classes = np.unique(y_val)
     if len(unique_classes) != 2 or not hasattr(model, "predict_proba"):
         return 0.5
@@ -102,44 +130,57 @@ def compute_metrics(
     y: np.ndarray,
     threshold: float = 0.5,
     n_latency_samples: int = 200,
+    task_type: str = "classification"
 ) -> Dict[str, Any]:
-    """Compute classification metrics (binary & multiclass) + inference latency."""
-    unique_classes = np.unique(y)
-    is_binary = len(unique_classes) <= 2
+    """Compute classification or regression metrics + inference latency."""
     
-    y_prob = None
-    if is_binary and hasattr(model, "predict_proba"):
-        y_prob = model.predict_proba(X)[:, 1]
-        y_pred = (y_prob >= threshold).astype(int)
-    else:
-        y_pred = model.predict(X)
-        if hasattr(model, "predict_proba"):
-            y_prob = model.predict_proba(X)
+    metrics: Dict[str, Any] = {}
+    
+    if task_type == "classification":
+        unique_classes = np.unique(y)
+        is_binary = len(unique_classes) <= 2
+        
+        y_prob = None
+        if is_binary and hasattr(model, "predict_proba"):
+            y_prob = model.predict_proba(X)[:, 1]
+            y_pred = (y_prob >= threshold).astype(int)
+        else:
+            y_pred = model.predict(X)
+            if hasattr(model, "predict_proba"):
+                y_prob = model.predict_proba(X)
 
-    avg_strategy = "binary" if is_binary else "weighted"
+        avg_strategy = "binary" if is_binary else "weighted"
 
-    from sklearn.metrics import confusion_matrix
-    cm = confusion_matrix(y, y_pred).tolist()
+        from sklearn.metrics import confusion_matrix
+        cm = confusion_matrix(y, y_pred).tolist()
 
-    metrics: Dict[str, Any] = {
-        "accuracy":  float(accuracy_score(y, y_pred)),
-        "precision": float(precision_score(y, y_pred, zero_division=0, average=avg_strategy)),
-        "recall":    float(recall_score(y, y_pred, zero_division=0, average=avg_strategy)),
-        "f1":        float(f1_score(y, y_pred, zero_division=0, average=avg_strategy)),
-        "optimal_threshold": float(threshold),
-        "confusion_matrix": cm,
-    }
+        metrics.update({
+            "accuracy":  float(accuracy_score(y, y_pred)),
+            "precision": float(precision_score(y, y_pred, zero_division=0, average=avg_strategy)),
+            "recall":    float(recall_score(y, y_pred, zero_division=0, average=avg_strategy)),
+            "f1":        float(f1_score(y, y_pred, zero_division=0, average=avg_strategy)),
+            "optimal_threshold": float(threshold),
+            "confusion_matrix": cm,
+        })
 
-    if y_prob is not None:
-        try:
-            if is_binary:
-                metrics["roc_auc"] = float(roc_auc_score(y, y_prob))
-            else:
-                metrics["roc_auc"] = float(roc_auc_score(y, y_prob, multi_class="ovr", average="weighted"))
-        except ValueError:
+        if y_prob is not None:
+            try:
+                if is_binary:
+                    metrics["roc_auc"] = float(roc_auc_score(y, y_prob))
+                else:
+                    metrics["roc_auc"] = float(roc_auc_score(y, y_prob, multi_class="ovr", average="weighted"))
+            except ValueError:
+                metrics["roc_auc"] = 0.5
+        else:
             metrics["roc_auc"] = 0.5
     else:
-        metrics["roc_auc"] = 0.5
+        # Regression
+        y_pred = model.predict(X)
+        metrics.update({
+            "rmse": float(np.sqrt(mean_squared_error(y, y_pred))),
+            "mae": float(mean_absolute_error(y, y_pred)),
+            "r2": float(r2_score(y, y_pred)),
+        })
 
     # Inference latency: run n_latency_samples single-sample predictions
     latencies: List[float] = []
@@ -168,27 +209,44 @@ def cross_validate_model(
     y: np.ndarray,
     n_folds: int,
     seed: int,
+    task_type: str = "classification"
 ) -> Dict[str, float]:
     """Return mean CV metrics."""
-    is_binary = len(np.unique(y)) <= 2
-    avg_strat = "binary" if is_binary else "weighted"
-
     from sklearn.metrics import make_scorer
-    scoring = {
-        "accuracy":  "accuracy",
-        "precision": make_scorer(precision_score, zero_division=0, average=avg_strat),
-        "recall":    make_scorer(recall_score, zero_division=0, average=avg_strat),
-        "f1":        make_scorer(f1_score, zero_division=0, average=avg_strat),
-        "roc_auc":   "roc_auc" if is_binary else "roc_auc_ovr",
-    }
-    cv = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=seed)
+    
+    if task_type == "classification":
+        is_binary = len(np.unique(y)) <= 2
+        avg_strat = "binary" if is_binary else "weighted"
+
+        scoring = {
+            "accuracy":  "accuracy",
+            "precision": make_scorer(precision_score, zero_division=0, average=avg_strat),
+            "recall":    make_scorer(recall_score, zero_division=0, average=avg_strat),
+            "f1":        make_scorer(f1_score, zero_division=0, average=avg_strat),
+            "roc_auc":   "roc_auc" if is_binary else "roc_auc_ovr",
+        }
+        cv = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=seed)
+    else:
+        scoring = {
+            "rmse": make_scorer(lambda y_true, y_pred: np.sqrt(mean_squared_error(y_true, y_pred)), greater_is_better=False),
+            "mae": make_scorer(mean_absolute_error, greater_is_better=False),
+            "r2": make_scorer(r2_score),
+        }
+        cv = KFold(n_splits=n_folds, shuffle=True, random_state=seed)
+        
     results = cross_validate(model, X, y, cv=cv, scoring=scoring, n_jobs=-1)
-    return {
-        f"cv_{k}": float(np.mean(v))
-        for k, v in results.items()
-        if k.startswith("test_")
-        for k in [k[5:]]  # strip "test_" prefix
-    }
+    
+    cv_metrics = {}
+    for k, v in results.items():
+        if k.startswith("test_"):
+            metric_name = k[5:]
+            val = float(np.mean(v))
+            # Invert negative metrics for regression
+            if task_type == "regression" and metric_name in ["rmse", "mae"]:
+                val = -val
+            cv_metrics[f"cv_{metric_name}"] = val
+            
+    return cv_metrics
 
 
 # ---------------------------------------------------------------------------
@@ -207,8 +265,11 @@ def train_model(
 
     tr_cfg = config["training"]
     ml_cfg = config["mlflow"]
+    ds_cfg = config["dataset"]
     seed = config["project"]["random_seed"]
     np.random.seed(seed)
+    
+    task_type = ds_cfg.get("task_type", "classification")
 
     hyperparams = tr_cfg["hyperparameters"].get(algorithm, {})
     model = build_model(algorithm, hyperparams, seed)
@@ -236,24 +297,30 @@ def train_model(
         logger.info("Training %s complete in %.3fs", algorithm, training_time)
 
         # --- Cross-validation (on train set) ---
-        cv_metrics = cross_validate_model(model, X_train, y_train, tr_cfg["cv_folds"], seed)
+        cv_metrics = cross_validate_model(model, X_train, y_train, tr_cfg["cv_folds"], seed, task_type=task_type)
         logger.info("CV results: %s", cv_metrics)
 
         # --- Find optimal threshold on validation set ---
-        opt_thresh = find_optimal_threshold(model, X_val, y_val)
+        opt_thresh = find_optimal_threshold(model, X_val, y_val, task_type=task_type)
         logger.info("Optimal threshold for %s: %.3f", algorithm, opt_thresh)
 
         # --- Held-out eval with optimal & baseline threshold ---
-        val_metrics  = {f"val_{k}":  v for k, v in compute_metrics(model, X_val,  y_val, threshold=opt_thresh).items() if k != "confusion_matrix"}
-        test_eval    = compute_metrics(model, X_test, y_test, threshold=opt_thresh)
-        base_eval    = compute_metrics(model, X_test, y_test, threshold=0.5)
+        val_metrics  = {f"val_{k}":  v for k, v in compute_metrics(model, X_val,  y_val, threshold=opt_thresh, task_type=task_type).items() if k != "confusion_matrix"}
+        test_eval    = compute_metrics(model, X_test, y_test, threshold=opt_thresh, task_type=task_type)
+        base_eval    = compute_metrics(model, X_test, y_test, threshold=0.5, task_type=task_type)
 
         test_metrics = {f"test_{k}": v for k, v in test_eval.items() if k != "confusion_matrix"}
         test_metrics["confusion_matrix"] = test_eval.get("confusion_matrix")
-        test_metrics["baseline_test_f1"] = base_eval["f1"]
-        test_metrics["baseline_test_precision"] = base_eval["precision"]
-        test_metrics["baseline_test_recall"] = base_eval["recall"]
-        test_metrics["optimal_threshold"] = opt_thresh
+        if task_type == "classification":
+            test_metrics["baseline_test_f1"] = base_eval["f1"]
+            test_metrics["baseline_test_precision"] = base_eval["precision"]
+            test_metrics["baseline_test_recall"] = base_eval["recall"]
+            test_metrics["optimal_threshold"] = opt_thresh
+        else:
+            test_metrics["baseline_test_rmse"] = base_eval["rmse"]
+            test_metrics["baseline_test_mae"] = base_eval["mae"]
+            test_metrics["baseline_test_r2"] = base_eval["r2"]
+            test_metrics["optimal_threshold"] = 0.5
 
         all_metrics = {
             "training_time_seconds": training_time,

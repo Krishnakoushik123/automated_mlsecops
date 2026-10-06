@@ -11,10 +11,11 @@ paths:
   mlflow_uri: sqlite:///mlflow.db
 dataset:
   name: credit_fraud
-  source: csv
+  source: file
   test_size: 0.2
   validation_size: 0.1
   csv_path: data\raw\cardata.csv
+  file_path: data\raw\cardata.csv
 features:
   numerical_strategy: median
   scale: standard

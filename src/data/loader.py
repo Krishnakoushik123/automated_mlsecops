@@ -50,8 +50,8 @@ def load_dataset(config: dict | None = None) -> Tuple[pd.DataFrame, pd.Series]:
 
     if source == "sklearn":
         X, y = _load_sklearn(ds_cfg, seed)
-    elif source == "csv":
-        X, y = _load_csv(ds_cfg)
+    elif source == "file":
+        X, y = _load_file(ds_cfg)
     else:
         raise ValueError(f"Unknown dataset source: {source!r}")
 
@@ -118,14 +118,26 @@ def _load_sklearn(ds_cfg: dict, seed: int) -> Tuple[pd.DataFrame, pd.Series]:
     return X, y
 
 
-def _load_csv(ds_cfg: dict) -> Tuple[pd.DataFrame, pd.Series]:
-    csv_path = Path(ds_cfg["csv_path"])
-    if not csv_path.exists():
-        raise FileNotFoundError(f"CSV not found: {csv_path}")
+def _load_file(ds_cfg: dict) -> Tuple[pd.DataFrame, pd.Series]:
+    file_path = Path(ds_cfg["file_path"])
+    if not file_path.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
     target_col = ds_cfg.get("target_column", "target")
-    df = pd.read_csv(csv_path)
+    
+    ext = file_path.suffix.lower()
+    if ext == ".csv":
+        df = pd.read_csv(file_path)
+    elif ext in [".xlsx", ".xls"]:
+        df = pd.read_excel(file_path)
+    elif ext == ".json":
+        df = pd.read_json(file_path)
+    elif ext == ".parquet":
+        df = pd.read_parquet(file_path)
+    else:
+        raise ValueError(f"Unsupported file extension: {ext}")
+        
     if target_col not in df.columns:
-        raise ValueError(f"Target column {target_col!r} not in CSV")
+        raise ValueError(f"Target column {target_col!r} not in file")
     y = df.pop(target_col).rename("target")
     return df, y
 
