@@ -121,9 +121,10 @@ def _load_sklearn(ds_cfg: dict, seed: int) -> Tuple[pd.DataFrame, pd.Series]:
 def _load_file(ds_cfg: dict) -> Tuple[pd.DataFrame, pd.Series]:
     file_path = Path(ds_cfg["file_path"])
     if not file_path.exists():
-        raise FileNotFoundError(f"File not found: {file_path}")
+        raise FileNotFoundError(f"Uploaded dataset file not found at: {file_path}")
     target_col = ds_cfg.get("target_column", "target")
-    
+    task_type = ds_cfg.get("task_type", "classification")
+
     ext = file_path.suffix.lower()
     if ext == ".csv":
         df = pd.read_csv(file_path)
@@ -134,11 +135,61 @@ def _load_file(ds_cfg: dict) -> Tuple[pd.DataFrame, pd.Series]:
     elif ext == ".parquet":
         df = pd.read_parquet(file_path)
     else:
-        raise ValueError(f"Unsupported file extension: {ext}")
-        
+        raise ValueError(f"Unsupported file format '{ext}'. Supported formats are: CSV, Excel (.xlsx, .xls), JSON, Parquet.")
+
     if target_col not in df.columns:
-        raise ValueError(f"Target column {target_col!r} not in file")
-    y = df.pop(target_col).rename("target")
+        cols_str = ", ".join([f"'{c}'" for c in df.columns[:10]])
+        if len(df.columns) > 10:
+            cols_str += f", ... ({len(df.columns)} total)"
+        raise ValueError(f"Target column '{target_col}' not found in dataset. Available columns: [{cols_str}]")
+
+    # Extract target column
+    y_raw = df.pop(target_col)
+
+    # Drop rows where target is NaN/null
+    valid_mask = y_raw.notnull()
+    if not valid_mask.any():
+        raise ValueError(f"Target column '{target_col}' contains only missing/null values.")
+
+    df = df[valid_mask].copy()
+    y_raw = y_raw[valid_mask].copy()
+
+    # Process target column according to task_type
+    if task_type == "classification":
+        # Convert string / boolean / object / float labels to integer class indices
+        if not np.issubdtype(y_raw.dtype, np.integer):
+            categories, codes = np.unique(y_raw.astype(str).values, return_inverse=True)
+            y = pd.Series(codes, index=y_raw.index, name="target", dtype=int)
+            logger.info("Encoded classification target '%s' into %d integer classes: %s", target_col, len(categories), categories.tolist())
+        else:
+            y = pd.Series(y_raw.values, index=y_raw.index, name="target", dtype=int)
+
+        n_classes = len(np.unique(y))
+        if n_classes < 2:
+            raise ValueError(f"Classification target column '{target_col}' must contain at least 2 distinct classes, found {n_classes}.")
+    else:
+        # Task type: regression
+        y_numeric = pd.to_numeric(y_raw, errors="coerce")
+        num_mask = y_numeric.notnull()
+        if not num_mask.any():
+            raise ValueError(f"Regression target column '{target_col}' contains no valid numeric values.")
+
+        df = df[num_mask].copy()
+        y = pd.Series(y_numeric[num_mask].values, index=df.index, name="target", dtype=float)
+
+    # Auto-convert categorical/string feature columns to one-hot numeric dummies
+    cat_cols = df.select_dtypes(include=["object", "category", "bool"]).columns.tolist()
+    if len(cat_cols) > 0:
+        df = pd.get_dummies(df, columns=cat_cols, drop_first=True, dtype=float)
+
+    # Ensure all remaining feature columns are numeric without overriding NaNs with 0
+    for col in df.columns:
+        if not np.issubdtype(df[col].dtype, np.number):
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    if df.shape[1] == 0:
+        raise ValueError("No feature columns remaining after dataset preprocessing.")
+
     return df, y
 
 

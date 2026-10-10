@@ -1,0 +1,159 @@
+{
+  "experiment_id": "exp_20261008_103447_a34efb",
+  "experiment_name": "default_experiment",
+  "model_version": "v22",
+  "created_at": "2026-10-08T05:04:47Z",
+  "status": "FAILED",
+  "error_message": "Target column 'symmetry_worst' not in file",
+  "config": {
+    "project": {
+      "name": "automated-mlsecops",
+      "version": "1.0.0",
+      "random_seed": 42,
+      "log_level": "INFO"
+    },
+    "paths": {
+      "data_raw": "data/raw",
+      "data_processed": "data/processed",
+      "models": "models",
+      "results": "results",
+      "mlflow_uri": "sqlite:///mlflow.db"
+    },
+    "dataset": {
+      "name": "credit_fraud",
+      "source": "file",
+      "test_size": 0.2,
+      "validation_size": 0.1,
+      "csv_path": "data\\raw\\cardata.csv",
+      "file_path": "data\\raw\\cardata.csv",
+      "target_column": "symmetry_worst",
+      "task_type": "regression"
+    },
+    "features": {
+      "numerical_strategy": "median",
+      "scale": "standard",
+      "pca_components": null
+    },
+    "training": {
+      "algorithms": [
+        "linear_regression",
+        "random_forest_regressor",
+        "gradient_boosting_regressor"
+      ],
+      "hyperparameters": {
+        "logistic_regression": {
+          "C": 1.0,
+          "max_iter": 1000,
+          "solver": "lbfgs"
+        },
+        "random_forest": {
+          "n_estimators": 100,
+          "max_depth": 10,
+          "min_samples_split": 5
+        },
+        "gradient_boosting": {
+          "n_estimators": 100,
+          "learning_rate": 0.1,
+          "max_depth": 5
+        }
+      },
+      "cv_folds": 5,
+      "optimization_metric": "rmse"
+    },
+    "mlflow": {
+      "experiment_prefix": "mlsecops",
+      "model_name": "credit_fraud_classifier",
+      "auto_log": true
+    },
+    "security": {
+      "dependency_audit": true,
+      "secrets_scan": true,
+      "data_integrity": true,
+      "adversarial_robustness": true,
+      "model_integrity": true,
+      "max_critical_vulns": 0,
+      "max_high_vulns": 2,
+      "min_robustness_score": 0.7,
+      "poisoning_threshold": 0.05
+    },
+    "monitoring": {
+      "drift_threshold": 0.1,
+      "latency_p99_ms": 200,
+      "prediction_drift_threshold": 0.15,
+      "check_interval_seconds": 60
+    },
+    "auto_response": {
+      "retrain_on_drift": true,
+      "rollback_on_gate_failure": true,
+      "alert_webhook_url": ""
+    },
+    "dea": {
+      "inputs": [
+        "development_time_hours",
+        "training_time_seconds",
+        "dataset_size",
+        "cpu_usage_percent",
+        "memory_usage_mb",
+        "labor_effort_hours"
+      ],
+      "outputs": [
+        "f1_score",
+        "robustness_score",
+        "inference_latency_ms",
+        "security_pass_rate"
+      ]
+    },
+    "api": {
+      "host": "0.0.0.0",
+      "port": 8000,
+      "workers": 1,
+      "reload": false
+    }
+  },
+  "dataset": {
+    "name": "credit_fraud",
+    "source": "file",
+    "task_type": "regression"
+  },
+  "data_quality": {
+    "passed": true
+  },
+  "models": {},
+  "best_model": null,
+  "security": {
+    "overall_passed": false,
+    "overall_score": 0.0,
+    "gate_results": []
+  },
+  "resources": {
+    "pipeline_execution_time_sec": 0.0,
+    "cpu_count": 12,
+    "ram_total_gb": 15.7,
+    "ram_used_gb": 10.2,
+    "ram_usage_percent": 64.9
+  },
+  "monitoring": {
+    "drift_threshold": 0.1,
+    "anomaly_detector_active": true
+  },
+  "deployment": {
+    "stage": "Staging",
+    "model_version": "v22",
+    "registered": false,
+    "api_endpoint": "http://localhost:8000/predict"
+  },
+  "research_metrics": {
+    "task_type": "regression",
+    "f1_score": 0.0,
+    "precision": 0.0,
+    "recall": 0.0,
+    "accuracy": 0.0,
+    "roc_auc": 0.5,
+    "rmse": 0.0,
+    "mae": 0.0,
+    "r2_score": 0.0,
+    "security_compliance": 0.0,
+    "latency_p50_ms": 0.0,
+    "latency_p95_ms": 0.0
+  }
+}

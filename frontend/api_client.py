@@ -69,6 +69,9 @@ class APIClient:
 
     def load_model(self, experiment_id: str) -> Optional[Dict[str, Any]]:
         return self._post(f"/experiments/{experiment_id}/model/load")
-        
+
     def get_model_download_url(self, experiment_id: str) -> str:
         return f"{self.base_url}/experiments/{experiment_id}/model/download"
+
+    def submit_ground_truth(self, indices: list, labels: list) -> Optional[Dict[str, Any]]:
+        return self._post("/monitoring/ground_truth", data={"prediction_indices": indices, "ground_truth": labels})

@@ -33,6 +33,14 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def get_next_model_version(results_dir: str = "results") -> str:
+    exp_dir = Path(results_dir) / "experiments"
+    if not exp_dir.exists():
+        return "v1"
+    existing = list(exp_dir.glob("*.json"))
+    return f"v{len(existing) + 1}"
+
+
 def create_standard_experiment_result(
     experiment_id: Optional[str] = None,
     experiment_name: str = "default_experiment",
@@ -51,11 +59,12 @@ def create_standard_experiment_result(
         config = load_config()
 
     exp_id = experiment_id or f"exp_{time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+    task_type = (dataset_meta or {}).get("task_type") or config.get("dataset", {}).get("task_type", "classification")
+    version_str = get_next_model_version(config.get("paths", {}).get("results", "results"))
 
     # Process models
     models_summary = {}
     best_model_info = None
-    best_f1 = -1.0
 
     if training_results:
         for item in training_results:
@@ -72,6 +81,9 @@ def create_standard_experiment_result(
                     "recall": metrics.get("test_recall", 0.0),
                     "f1": metrics.get("test_f1", 0.0),
                     "roc_auc": metrics.get("test_roc_auc", 0.5),
+                    "rmse": metrics.get("test_rmse", 0.0),
+                    "mae": metrics.get("test_mae", 0.0),
+                    "r2": metrics.get("test_r2", 0.0),
                     "latency_p50_ms": metrics.get("test_latency_p50_ms", 0.0),
                     "latency_p95_ms": metrics.get("test_latency_p95_ms", 0.0),
                     "latency_p99_ms": metrics.get("test_latency_p99_ms", 0.0),
@@ -83,15 +95,33 @@ def create_standard_experiment_result(
                     "confusion_matrix": metrics.get("confusion_matrix"),
                 },
             }
-            if metrics.get("test_f1", 0.0) > best_f1:
-                best_f1 = metrics.get("test_f1", 0.0)
-                best_model_info = {
-                    "algorithm": algo,
-                    "run_id": item.get("run_id"),
-                    "model_path": item.get("model_path"),
-                    "optimal_threshold": metrics.get("optimal_threshold", 0.5),
-                    "metrics": models_summary[algo]["metrics"],
-                }
+
+        # Select best model
+        best_score = None
+        for algo, m_dict in models_summary.items():
+            m = m_dict["metrics"]
+            if task_type == "classification":
+                score = m.get("f1", 0.0)
+                if best_score is None or score > best_score:
+                    best_score = score
+                    best_model_info = {
+                        "algorithm": algo,
+                        "run_id": m_dict["run_id"],
+                        "model_path": m_dict["model_path"],
+                        "optimal_threshold": m.get("optimal_threshold", 0.5),
+                        "metrics": m,
+                    }
+            else:
+                score = m.get("r2", -999.0)
+                if best_score is None or score > best_score:
+                    best_score = score
+                    best_model_info = {
+                        "algorithm": algo,
+                        "run_id": m_dict["run_id"],
+                        "model_path": m_dict["model_path"],
+                        "optimal_threshold": 0.5,
+                        "metrics": m,
+                    }
 
     # Security summary
     sec_gates_formatted = []
@@ -134,6 +164,7 @@ def create_standard_experiment_result(
     result = {
         "experiment_id": exp_id,
         "experiment_name": experiment_name,
+        "model_version": version_str,
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "status": status,
         "error_message": error_message,
@@ -141,6 +172,7 @@ def create_standard_experiment_result(
         "dataset": dataset_meta or {
             "name": config.get("dataset", {}).get("name", "credit_fraud"),
             "source": config.get("dataset", {}).get("source", "sklearn"),
+            "task_type": task_type,
         },
         "data_quality": val_report or {"passed": True},
         "models": models_summary,
@@ -157,18 +189,23 @@ def create_standard_experiment_result(
         },
         "deployment": {
             "stage": registry_info.get("stage", "Staging") if registry_info else "Staging",
-            "model_version": registry_info.get("version", "v1.0.0") if registry_info else "v1.0.0",
+            "model_version": version_str,
             "registered": bool(registry_info),
             "api_endpoint": "http://localhost:8000/predict",
         },
         "research_metrics": {
-            "f1_score": best_model_info["metrics"]["f1"] if best_model_info else 0.0,
-            "precision": best_model_info["metrics"]["precision"] if best_model_info else 0.0,
-            "recall": best_model_info["metrics"]["recall"] if best_model_info else 0.0,
-            "accuracy": best_model_info["metrics"]["accuracy"] if best_model_info else 0.0,
-            "roc_auc": best_model_info["metrics"]["roc_auc"] if best_model_info else 0.5,
+            "task_type": task_type,
+            "f1_score": best_model_info["metrics"].get("f1", 0.0) if best_model_info else 0.0,
+            "precision": best_model_info["metrics"].get("precision", 0.0) if best_model_info else 0.0,
+            "recall": best_model_info["metrics"].get("recall", 0.0) if best_model_info else 0.0,
+            "accuracy": best_model_info["metrics"].get("accuracy", 0.0) if best_model_info else 0.0,
+            "roc_auc": best_model_info["metrics"].get("roc_auc", 0.5) if best_model_info else 0.5,
+            "rmse": best_model_info["metrics"].get("rmse", 0.0) if best_model_info else 0.0,
+            "mae": best_model_info["metrics"].get("mae", 0.0) if best_model_info else 0.0,
+            "r2_score": best_model_info["metrics"].get("r2", 0.0) if best_model_info else 0.0,
             "security_compliance": overall_sec_score,
-            "latency_p50_ms": best_model_info["metrics"]["latency_p50_ms"] if best_model_info else 0.0,
+            "latency_p50_ms": best_model_info["metrics"].get("latency_p50_ms", 0.0) if best_model_info else 0.0,
+            "latency_p95_ms": best_model_info["metrics"].get("latency_p95_ms", 0.0) if best_model_info else 0.0,
         },
     }
 
@@ -176,23 +213,31 @@ def create_standard_experiment_result(
 
 
 def save_experiment_result(result: Dict[str, Any], results_dir: str = "results") -> Path:
-    """Save experiment result JSON to results/experiments/<exp_id>.json and latest_experiment.json."""
+    """Save experiment result JSON to results/experiments/<exp_id>.json, results/<exp_id>/experiment_result.json, and latest_experiment.json."""
     base_dir = Path(results_dir)
+    exp_id = result["experiment_id"]
+
+    # 1. Global experiments folder
     exp_dir = base_dir / "experiments"
     exp_dir.mkdir(parents=True, exist_ok=True)
-
-    exp_id = result["experiment_id"]
     file_path = exp_dir / f"{exp_id}.json"
 
     with open(file_path, "w", encoding="utf-8") as fh:
         json.dump(result, fh, indent=2, default=str)
 
-    # Update latest_experiment.json
+    # 2. Specific run folder
+    run_dir = base_dir / exp_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    run_file = run_dir / "experiment_result.json"
+    with open(run_file, "w", encoding="utf-8") as fh:
+        json.dump(result, fh, indent=2, default=str)
+
+    # 3. Update latest_experiment.json
     latest_path = base_dir / "latest_experiment.json"
     with open(latest_path, "w", encoding="utf-8") as fh:
         json.dump(result, fh, indent=2, default=str)
 
-    logger.info("Saved standardized experiment result -> %s", file_path)
+    logger.info("Saved standardized experiment result -> %s and %s", file_path, run_file)
     return file_path
 
 
@@ -224,15 +269,23 @@ def list_experiments(results_dir: str = "results") -> List[Dict[str, Any]]:
         try:
             with open(p, "r", encoding="utf-8") as fh:
                 data = json.load(fh)
+                bm = data.get("best_model", {})
+                rm = data.get("research_metrics", {})
+                ds = data.get("dataset", {})
                 summaries.append({
                     "experiment_id": data.get("experiment_id"),
                     "experiment_name": data.get("experiment_name"),
+                    "model_version": data.get("model_version") or data.get("deployment", {}).get("model_version", "v1"),
                     "created_at": data.get("created_at"),
                     "status": data.get("status"),
-                    "best_model": data.get("best_model", {}).get("algorithm") if data.get("best_model") else None,
-                    "f1_score": data.get("research_metrics", {}).get("f1_score", 0.0),
+                    "task_type": ds.get("task_type", "classification"),
+                    "dataset": ds,
+                    "best_model": bm.get("algorithm") if isinstance(bm, dict) else None,
+                    "f1_score": rm.get("f1_score", 0.0),
+                    "r2_score": rm.get("r2_score", 0.0),
                     "security_score": data.get("security", {}).get("overall_score", 0.0),
                 })
         except Exception:
             pass
     return summaries
+

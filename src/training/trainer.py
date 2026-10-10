@@ -324,10 +324,33 @@ def train_model(
 
         all_metrics = {
             "training_time_seconds": training_time,
+            "training_time_sec": training_time,
             **{f"cv_{k}": v for k, v in cv_metrics.items()},
             **val_metrics,
-            **{k: v for k, v in test_metrics.items() if k != "confusion_matrix"},
+            **test_metrics,
         }
+        # Standardize direct metric aliases for frontend consumption
+        if task_type == "classification":
+            all_metrics.update({
+                "f1": test_metrics.get("test_f1", 0.0),
+                "accuracy": test_metrics.get("test_accuracy", 0.0),
+                "precision": test_metrics.get("test_precision", 0.0),
+                "recall": test_metrics.get("test_recall", 0.0),
+                "roc_auc": test_metrics.get("test_roc_auc", 0.5),
+            })
+        else:
+            all_metrics.update({
+                "rmse": test_metrics.get("test_rmse", 0.0),
+                "mae": test_metrics.get("test_mae", 0.0),
+                "r2": test_metrics.get("test_r2", 0.0),
+            })
+
+        all_metrics.update({
+            "latency_p50_ms": test_metrics.get("test_latency_p50_ms", 0.0),
+            "latency_p95_ms": test_metrics.get("test_latency_p95_ms", 0.0),
+            "latency_p99_ms": test_metrics.get("test_latency_p99_ms", 0.0),
+        })
+
         # Log numeric metrics to MLflow
         mlflow.log_metrics({k: v for k, v in all_metrics.items() if isinstance(v, (int, float))})
 

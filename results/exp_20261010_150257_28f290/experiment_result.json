@@ -1,0 +1,322 @@
+{
+  "experiment_id": "exp_20261010_150257_28f290",
+  "experiment_name": "pipeline_experiment",
+  "model_version": "v37",
+  "created_at": "2026-10-10T09:33:09Z",
+  "status": "COMPLETED",
+  "error_message": null,
+  "config": {
+    "project": {
+      "name": "automated-mlsecops",
+      "version": "1.0.0",
+      "random_seed": 42,
+      "log_level": "INFO"
+    },
+    "paths": {
+      "data_raw": "data/raw",
+      "data_processed": "data/processed",
+      "models": "models",
+      "results": "results",
+      "mlflow_uri": "sqlite:///mlflow.db"
+    },
+    "dataset": {
+      "name": "credit_fraud",
+      "source": "file",
+      "test_size": 0.2,
+      "validation_size": 0.1,
+      "csv_path": "data\\raw\\cardata.csv",
+      "file_path": "data\\raw\\predict_test.csv",
+      "target_column": "label",
+      "task_type": "classification"
+    },
+    "features": {
+      "numerical_strategy": "median",
+      "scale": "standard",
+      "pca_components": null
+    },
+    "training": {
+      "algorithms": [
+        "logistic_regression"
+      ],
+      "hyperparameters": {
+        "logistic_regression": {
+          "C": 1.0,
+          "max_iter": 1000,
+          "solver": "lbfgs"
+        },
+        "random_forest": {
+          "n_estimators": 100,
+          "max_depth": 10,
+          "min_samples_split": 5
+        },
+        "gradient_boosting": {
+          "n_estimators": 100,
+          "learning_rate": 0.1,
+          "max_depth": 5
+        }
+      },
+      "cv_folds": 5,
+      "optimization_metric": "f1"
+    },
+    "mlflow": {
+      "experiment_prefix": "mlsecops",
+      "model_name": "credit_fraud_classifier",
+      "auto_log": true
+    },
+    "security": {
+      "dependency_audit": true,
+      "secrets_scan": true,
+      "data_integrity": true,
+      "adversarial_robustness": true,
+      "model_integrity": true,
+      "max_critical_vulns": 0,
+      "max_high_vulns": 2,
+      "min_robustness_score": 0.7,
+      "poisoning_threshold": 0.05
+    },
+    "monitoring": {
+      "drift_threshold": 0.1,
+      "latency_p99_ms": 200,
+      "prediction_drift_threshold": 0.15,
+      "check_interval_seconds": 60
+    },
+    "auto_response": {
+      "retrain_on_drift": true,
+      "rollback_on_gate_failure": true,
+      "alert_webhook_url": ""
+    },
+    "dea": {
+      "inputs": [
+        "development_time_hours",
+        "training_time_seconds",
+        "dataset_size",
+        "cpu_usage_percent",
+        "memory_usage_mb",
+        "labor_effort_hours"
+      ],
+      "outputs": [
+        "f1_score",
+        "robustness_score",
+        "inference_latency_ms",
+        "security_pass_rate"
+      ]
+    },
+    "api": {
+      "host": "0.0.0.0",
+      "port": 8000,
+      "workers": 1,
+      "reload": false
+    }
+  },
+  "dataset": {
+    "name": "credit_fraud",
+    "source": "file",
+    "file_path": "data\\raw\\predict_test.csv",
+    "target_column": "label",
+    "n_samples": 120,
+    "n_features": 5,
+    "task_type": "classification",
+    "n_classes": 2,
+    "class_distribution": {
+      "0": 62,
+      "1": 58
+    }
+  },
+  "data_quality": {
+    "schema": {
+      "passed": true,
+      "errors": []
+    },
+    "missing": {
+      "total_missing": 0,
+      "missing_ratio": 0.0,
+      "by_column": {},
+      "passed": true
+    },
+    "duplicates": {
+      "n_duplicates": 0,
+      "passed": "True"
+    },
+    "class_balance": {
+      "class_distribution": {
+        "0": 0.5166666666666667,
+        "1": 0.48333333333333334
+      },
+      "min_class_ratio": 0.48333333333333334,
+      "passed": true
+    },
+    "overall_passed": true
+  },
+  "models": {
+    "logistic_regression": {
+      "algorithm": "logistic_regression",
+      "run_id": "c77b89c0d1be439abf6b68f448b06f4f",
+      "model_path": "models\\logistic_regression.joblib",
+      "hyperparams": {
+        "C": 1.0,
+        "max_iter": 1000,
+        "solver": "lbfgs"
+      },
+      "metrics": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "roc_auc": 1.0,
+        "rmse": 0.0,
+        "mae": 0.0,
+        "r2": 0.0,
+        "latency_p50_ms": 0.055350001275655814,
+        "latency_p95_ms": 0.07506999991164773,
+        "latency_p99_ms": 0.08128499983286011,
+        "training_time_sec": 0.008448000000498723,
+        "optimal_threshold": 0.4815008487148855,
+        "baseline_f1": 1.0,
+        "baseline_precision": 1.0,
+        "baseline_recall": 1.0,
+        "confusion_matrix": [
+          [
+            12,
+            0
+          ],
+          [
+            0,
+            12
+          ]
+        ]
+      }
+    }
+  },
+  "best_model": {
+    "algorithm": "logistic_regression",
+    "run_id": "c77b89c0d1be439abf6b68f448b06f4f",
+    "model_path": "models\\logistic_regression.joblib",
+    "optimal_threshold": 0.4815008487148855,
+    "metrics": {
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "roc_auc": 1.0,
+      "rmse": 0.0,
+      "mae": 0.0,
+      "r2": 0.0,
+      "latency_p50_ms": 0.055350001275655814,
+      "latency_p95_ms": 0.07506999991164773,
+      "latency_p99_ms": 0.08128499983286011,
+      "training_time_sec": 0.008448000000498723,
+      "optimal_threshold": 0.4815008487148855,
+      "baseline_f1": 1.0,
+      "baseline_precision": 1.0,
+      "baseline_recall": 1.0,
+      "confusion_matrix": [
+        [
+          12,
+          0
+        ],
+        [
+          0,
+          12
+        ]
+      ]
+    }
+  },
+  "security": {
+    "overall_passed": false,
+    "overall_score": 0.7916666666666667,
+    "gate_results": [
+      {
+        "gate": "dependency_audit",
+        "passed": true,
+        "score": 1.0,
+        "duration_seconds": 0.07654660000116564,
+        "details": {
+          "total_vulnerabilities": 0,
+          "critical": 0,
+          "high": 0,
+          "max_critical_allowed": 0,
+          "max_high_allowed": 2
+        }
+      },
+      {
+        "gate": "secrets_scan",
+        "passed": true,
+        "score": 1.0,
+        "duration_seconds": 0.07274669999969774,
+        "details": {
+          "high_severity": 0,
+          "medium_severity": 0,
+          "total_issues": 0,
+          "findings": []
+        }
+      },
+      {
+        "gate": "data_integrity",
+        "passed": true,
+        "score": 1.0,
+        "duration_seconds": 0.000458399998024106,
+        "details": {
+          "js_divergence": 0.0,
+          "estimated_flip_rate": 0.0,
+          "feature_anomaly_rate": 0.0,
+          "threshold": 0.05
+        }
+      },
+      {
+        "gate": "adversarial_robustness",
+        "passed": true,
+        "score": 0.9583333333333334,
+        "duration_seconds": 0.0022930000013730023,
+        "details": {
+          "epsilon": 0.1,
+          "n_samples": 500,
+          "adv_accuracy": 0.9583333333333334,
+          "min_required": 0.7,
+          "method": "fgsm_finite_diff"
+        }
+      },
+      {
+        "gate": "model_integrity",
+        "passed": false,
+        "score": 0.0,
+        "duration_seconds": 0.0029845999997633044,
+        "details": {
+          "model_path": "models\\logistic_regression.joblib",
+          "sha256": "7735c030a274f959652be28c9a80db7cc47e88f5ceb5c286b80b7ad72d44d4a5",
+          "matched": false
+        }
+      }
+    ]
+  },
+  "resources": {
+    "pipeline_execution_time_sec": 11.189550200000667,
+    "cpu_count": 12,
+    "ram_total_gb": 15.7,
+    "ram_used_gb": 12.9,
+    "ram_usage_percent": 82.2
+  },
+  "monitoring": {
+    "drift_threshold": 0.1,
+    "anomaly_detector_active": true
+  },
+  "deployment": {
+    "stage": "Staging",
+    "model_version": "v37",
+    "registered": true,
+    "api_endpoint": "http://localhost:8000/predict"
+  },
+  "research_metrics": {
+    "task_type": "classification",
+    "f1_score": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "accuracy": 1.0,
+    "roc_auc": 1.0,
+    "rmse": 0.0,
+    "mae": 0.0,
+    "r2_score": 0.0,
+    "security_compliance": 0.7916666666666667,
+    "latency_p50_ms": 0.055350001275655814,
+    "latency_p95_ms": 0.07506999991164773
+  }
+}

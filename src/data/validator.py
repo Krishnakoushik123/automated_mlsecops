@@ -47,19 +47,22 @@ def build_schema(df: pd.DataFrame, target_col: str = "target") -> DataFrameSchem
             columns[col] = Column(
                 float,
                 checks=[
-                    Check(lambda s: s.notna().all(), error=f"{col}: contains NaN"),
-                    Check(lambda s: np.isfinite(s).all(), error=f"{col}: contains inf"),
+                    Check(lambda s: np.isfinite(s.dropna()).all(), error=f"{col}: contains inf"),
                 ],
-                nullable=False,
+                nullable=True,
                 coerce=True,
             )
-        elif np.issubdtype(dtype, np.integer):
-            columns[col] = Column(int, nullable=False, coerce=True)
+        elif np.issubdtype(dtype, np.integer) or np.issubdtype(dtype, np.bool_):
+            columns[col] = Column(int, nullable=True, coerce=True)
         else:
             columns[col] = Column(object, nullable=True, coerce=False)
 
-    # Add target column
-    columns[target_col] = Column(int, nullable=False, coerce=True)
+    # Add target column (float if regression/continuous, int if classification/discrete)
+    target_dtype = df[target_col].dtype
+    if np.issubdtype(target_dtype, np.floating):
+        columns[target_col] = Column(float, nullable=False, coerce=True)
+    else:
+        columns[target_col] = Column(int, nullable=False, coerce=True)
 
     return DataFrameSchema(columns, strict=False)
 
@@ -77,6 +80,10 @@ def _check_duplicates(df: pd.DataFrame) -> Dict:
 
 
 def _check_class_balance(y: pd.Series, warn_threshold: float = 0.10) -> Dict:
+    # Check if target is continuous
+    if len(np.unique(y)) > 20 or not np.issubdtype(y.dtype, np.integer):
+        return {"passed": True, "task": "regression", "note": "Continuous target"}
+
     counts = y.value_counts(normalize=True)
     min_ratio = float(counts.min())
     passed = min_ratio >= warn_threshold
@@ -97,13 +104,16 @@ def _check_class_balance(y: pd.Series, warn_threshold: float = 0.10) -> Dict:
 def _check_missing(df: pd.DataFrame) -> Dict:
     missing = df.isnull().sum()
     total_missing = int(missing.sum())
+    missing_ratio = total_missing / (len(df) * max(1, len(df.columns)))
+    passed = (total_missing == 0)
     result = {
         "total_missing": total_missing,
+        "missing_ratio": missing_ratio,
         "by_column": missing[missing > 0].to_dict(),
-        "passed": total_missing == 0,
+        "passed": passed,
     }
     if total_missing > 0:
-        logger.warning("Missing values detected: %s", result["by_column"])
+        logger.warning("Missing values detected: %s (handled by SimpleImputer)", result["by_column"])
     return result
 
 
@@ -147,22 +157,16 @@ def validate_dataset(
     # 4. Class balance
     report["class_balance"] = _check_class_balance(y)
 
-    # Overall result — only inspect dict sub-reports (not scalar values)
-    # class_balance is a WARNING, not a blocker (imbalance is expected in fraud datasets)
-    blocking_checks = {"schema", "missing", "duplicates"}
-    sub_reports = {k: v for k, v in report.items() if isinstance(v, dict)}
-    overall = all(
-        v.get("passed", False)
-        for k, v in sub_reports.items()
-        if k in blocking_checks
-    )
+    # Overall result — schema failure or missing ratio > 50% blocks execution
+    schema_passed = report["schema"].get("passed", False)
+    missing_ok = report["missing"].get("missing_ratio", 0.0) <= 0.50
+    overall = schema_passed and missing_ok
     report["overall_passed"] = overall
 
     if overall:
         logger.info("All data validation checks PASSED")
     else:
-        failed = [k for k, v in sub_reports.items() if not v.get("passed", True)]
-        logger.error("Data validation FAILED for: %s", failed)
+        logger.error("Data validation FAILED (schema_passed=%s, missing_ok=%s)", schema_passed, missing_ok)
 
     return overall, report
 

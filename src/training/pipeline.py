@@ -192,8 +192,10 @@ def run_pipeline(
     # Construct and persist standardized experiment result payload
     task_type = config.get("dataset", {}).get("task_type", "classification")
     dataset_meta = {
-        "name": config["dataset"].get("name", "credit_fraud"),
+        "name": config["dataset"].get("name", config["dataset"].get("file_path", "uploaded_dataset")),
         "source": config["dataset"].get("source", "sklearn"),
+        "file_path": config["dataset"].get("file_path", ""),
+        "target_column": config["dataset"].get("target_column", "target"),
         "n_samples": len(X),
         "n_features": X.shape[1],
         "task_type": task_type,
