@@ -41,59 +41,82 @@ def run_pipeline(
     experiment_id: str | None = None,
     experiment_name: str = "pipeline_experiment",
     config: dict | None = None,
+    stage_callback: Any = None,
 ) -> dict:
-    """Execute the full MLSecOps pipeline and return standardized result dict."""
+    """Execute the full MLSecOps pipeline with genuine stage reporting and return standardized result dict."""
     if config is None:
         config = load_config()
+
+    def notify_stage(stg_name: str, details: str = ""):
+        if stage_callback is not None:
+            try:
+                stage_callback(stg_name, details)
+            except Exception as cb_err:
+                logger.warning("Stage callback error: %s", cb_err)
 
     mlflow.set_tracking_uri(get_mlflow_uri(config))
     t_pipeline_start = time.perf_counter()
 
     # ------------------------------------------------------------------
-    # Stage 1 – Data
+    # Stage 1 – Data Ingestion / Upload
     # ------------------------------------------------------------------
+    notify_stage("Upload", "Ingesting and snapshotting raw dataset")
     logger.info("=" * 60)
-    logger.info("STAGE 1 / DATA INGESTION")
+    logger.info("STAGE 1 / DATA INGESTION (UPLOAD)")
     logger.info("=" * 60)
     X, y = load_dataset(config)
     save_raw(X, y, config)
 
     # ------------------------------------------------------------------
-    # Stage 2 – Validation
+    # Stage 2 – Data Validation / Quality Check
     # ------------------------------------------------------------------
+    notify_stage("Quality Check", "Verifying schema, null bounds, and rejection criteria")
     logger.info("=" * 60)
-    logger.info("STAGE 2 / DATA VALIDATION")
+    logger.info("STAGE 2 / DATA VALIDATION (QUALITY CHECK)")
     logger.info("=" * 60)
     passed, val_report = validate_dataset(X, y, config)
     if not passed:
-        raise RuntimeError("Data validation failed – pipeline aborted.\n" + json.dumps(val_report, default=str))
+        reasons = val_report.get("rejection_reasons", ["Dataset rejected: failed quality criteria"])
+        err_msg = "Data quality check failed:\n - " + "\n - ".join(reasons)
+        logger.error(err_msg)
+        raise ValueError(err_msg)
 
     # ------------------------------------------------------------------
-    # Stage 3 – Feature pipeline
+    # Stage 3 – Data Cleaning & Repair
     # ------------------------------------------------------------------
+    notify_stage("Cleaning", "Safely repairing duplicates, missing values, outliers, and encoding categories")
     logger.info("=" * 60)
-    logger.info("STAGE 3 / FEATURE PIPELINE")
+    logger.info("STAGE 3 / DATA CLEANING")
     logger.info("=" * 60)
-    splits = split_dataset(X, y, config)
+    from src.data.validator import clean_and_repair_dataset
+    X_clean, y_clean, cleaning_report = clean_and_repair_dataset(X, y, config)
+    val_report["cleaning"] = cleaning_report
+
+    # ------------------------------------------------------------------
+    # Feature Pipeline & Splitting
+    # ------------------------------------------------------------------
+    splits = split_dataset(X_clean, y_clean, config)
     transformed_splits, feature_pipe = fit_transform_splits(splits, config=config)
 
     # ------------------------------------------------------------------
-    # Stage 4 – Training
+    # Stage 4 – Model Training
     # ------------------------------------------------------------------
+    notify_stage("Training", "Training configured ML models with cross-validation and class weighting")
     logger.info("=" * 60)
     logger.info("STAGE 4 / MODEL TRAINING")
     logger.info("=" * 60)
     results = train_all(transformed_splits, config)
 
     # ------------------------------------------------------------------
-    # Stage 5 – Security Gates Verification
+    # Stage 5 – Evaluation
     # ------------------------------------------------------------------
+    notify_stage("Evaluation", "Evaluating held-out validation & test sets and optimizing decision thresholds")
     logger.info("=" * 60)
-    logger.info("STAGE 5 / SECURITY GATES")
+    logger.info("STAGE 5 / MODEL EVALUATION")
     logger.info("=" * 60)
-    sec_results = []
+    task_type = config.get("dataset", {}).get("task_type", "classification")
+    best = None
     if results:
-        task_type = config.get("dataset", {}).get("task_type", "classification")
         if task_type == "classification":
             opt_metric = f"test_{config['training'].get('optimization_metric', 'f1')}"
             best = max(results, key=lambda r: r["metrics"].get(opt_metric, 0))
@@ -103,15 +126,20 @@ def run_pipeline(
                 best = min(results, key=lambda r: r["metrics"].get(opt_metric, float('inf')))
             else:
                 best = max(results, key=lambda r: r["metrics"].get(opt_metric, -float('inf')))
-                
+
+    # ------------------------------------------------------------------
+    # Stage 6 – Security Gates Verification
+    # ------------------------------------------------------------------
+    notify_stage("Security", "Running automated security gates: dependencies, secrets, poisoning, robustness")
+    logger.info("=" * 60)
+    logger.info("STAGE 6 / SECURITY GATES")
+    logger.info("=" * 60)
+    sec_results = []
+    if results and best is not None:
         best_algo = best["algorithm"]
         best_model_path = Path(best["model_path"])
-        best_model_obj = build_model(
-            best_algo,
-            config["training"]["hyperparameters"].get(best_algo, {}),
-            seed=config["project"]["random_seed"],
-        )
-        best_model_obj.fit(transformed_splits["train"][0], transformed_splits["train"][1])
+        # Performance optimization: load already-trained best model instead of re-fitting
+        best_model_obj = joblib.load(best_model_path)
 
         sec_results = run_all_gates(
             config=config,
@@ -135,27 +163,18 @@ def run_pipeline(
                 import shutil
                 shutil.copy2(feature_pipe_path, exp_dir / "feature_pipeline.joblib")
             
-            # Also overwrite the global 'latest' model for the default API startup
+            # Also overwrite the global 'latest' model for default API startup
             joblib.dump(best_model_obj, Path(config["paths"]["models"]) / "best_model.joblib")
 
     # ------------------------------------------------------------------
-    # Stage 6 – (Optional) Model Registry
+    # Stage 7 – Packaging & Model Registry
     # ------------------------------------------------------------------
+    notify_stage("Packaging", "Persisting model registry, metadata, and deployable artifacts")
     registry_info = None
-    if register and results:
+    if register and results and best is not None:
         logger.info("=" * 60)
-        logger.info("STAGE 6 / MODEL REGISTRY")
+        logger.info("STAGE 7 / MODEL PACKAGING & REGISTRY")
         logger.info("=" * 60)
-        if task_type == "classification":
-            opt_metric = f"test_{config['training'].get('optimization_metric', 'f1')}"
-            best = max(results, key=lambda r: r["metrics"].get(opt_metric, 0))
-        else:
-            opt_metric = f"test_{config['training'].get('optimization_metric', 'rmse')}"
-            if opt_metric in ["test_rmse", "test_mae"]:
-                best = min(results, key=lambda r: r["metrics"].get(opt_metric, float('inf')))
-            else:
-                best = max(results, key=lambda r: r["metrics"].get(opt_metric, -float('inf')))
-                
         logger.info(
             "Best model: %s  (%s=%.4f)",
             best["algorithm"],
@@ -191,10 +210,17 @@ def run_pipeline(
 
     # Construct and persist standardized experiment result payload
     task_type = config.get("dataset", {}).get("task_type", "classification")
+    file_path_str = config["dataset"].get("file_path", "")
+    file_name_str = config["dataset"].get("file_name") or (Path(file_path_str).name if file_path_str else "dataset.csv")
+    from src.data.loader import generate_dataset_id
+    dataset_id_str = config["dataset"].get("dataset_id") or generate_dataset_id(file_name_str)
+
     dataset_meta = {
-        "name": config["dataset"].get("name", config["dataset"].get("file_path", "uploaded_dataset")),
+        "name": Path(file_name_str).stem if file_name_str else config["dataset"].get("name", "dataset"),
+        "file_name": file_name_str,
+        "dataset_id": dataset_id_str,
         "source": config["dataset"].get("source", "sklearn"),
-        "file_path": config["dataset"].get("file_path", ""),
+        "file_path": file_path_str,
         "target_column": config["dataset"].get("target_column", "target"),
         "n_samples": len(X),
         "n_features": X.shape[1],

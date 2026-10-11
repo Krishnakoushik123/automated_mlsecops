@@ -63,6 +63,21 @@ def load_dataset(config: dict | None = None) -> Tuple[pd.DataFrame, pd.Series]:
     return X, y
 
 
+import hashlib
+import re
+
+def generate_dataset_id(file_name: str, file_content: bytes | None = None) -> str:
+    """Generate a stable, deterministic dataset ID based on filename and optional content hash."""
+    clean_stem = re.sub(r'[^a-zA-Z0-9_]', '_', Path(file_name).stem.lower()).strip('_')
+    if not clean_stem:
+        clean_stem = "dataset"
+    if file_content is not None and len(file_content) > 0:
+        h = hashlib.sha256(file_content).hexdigest()[:8]
+    else:
+        h = hashlib.md5(file_name.encode("utf-8")).hexdigest()[:8]
+    return f"ds_{clean_stem}_{h}"
+
+
 def save_raw(X: pd.DataFrame, y: pd.Series, config: dict | None = None) -> Path:
     """Persist the raw dataset to data/raw/ as Parquet and return the path."""
     if config is None:
@@ -75,7 +90,11 @@ def save_raw(X: pd.DataFrame, y: pd.Series, config: dict | None = None) -> Path:
     df["target"] = y.values
     out_path = raw_dir / "dataset.parquet"
     df.to_parquet(out_path, index=False)
-    logger.info("Raw dataset saved â†’ %s", out_path)
+    
+    # Also preserve the original raw snapshot
+    raw_snapshot = raw_dir / "raw_dataset.parquet"
+    df.to_parquet(raw_snapshot, index=False)
+    logger.info("Raw dataset saved -> %s and %s", out_path, raw_snapshot)
     return out_path
 
 

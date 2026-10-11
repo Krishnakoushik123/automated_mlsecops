@@ -225,52 +225,62 @@ st.markdown("""
 api = APIClient()
 
 def render_metric(title, value, color_class=""):
-    st.markdown(f"""
-    <div class="metric-card">
-        <div class="metric-title">{title}</div>
-        <div class="metric-value {color_class}">{value}</div>
-    </div>
-    """, unsafe_allow_html=True)
+    card_html = f'<div class="metric-card"><div class="metric-title">{title}</div><div class="metric-value {color_class}">{value}</div></div>'
+    st.markdown(card_html, unsafe_allow_html=True)
 
-def render_pipeline_tracker(status):
+def render_pipeline_tracker(current_stage_name="Upload", status="RUNNING"):
+    """Renders the authentic 7-stage MLSecOps pipeline progress tracker.
+    Stages: Upload → Quality Check → Cleaning → Training → Evaluation → Security → Packaging
+    """
     stages = [
-        ("Data Validation", "📊"),
-        ("Preprocessing", "⚙️"),
+        ("Upload", "📤"),
+        ("Quality Check", "🔍"),
+        ("Cleaning", "🧹"),
         ("Training", "🧠"),
         ("Evaluation", "📈"),
         ("Security", "🛡️"),
-        ("Deployment", "🚀")
+        ("Packaging", "📦"),
     ]
     
-    if status == "QUEUED":
-        current_stage = 0
-    elif status == "RUNNING":
-        current_stage = 2
-    elif status == "COMPLETED":
-        current_stage = len(stages)
-    elif status == "FAILED":
-        current_stage = -1
-    else:
-        current_stage = 0
+    cur_lower = (str(current_stage_name) or "").lower().replace("_", " ")
+    match_idx = 0
+    for idx, (s_name, _) in enumerate(stages):
+        if s_name.lower() in cur_lower or cur_lower in s_name.lower():
+            match_idx = idx
+            break
 
-    html = '<div class="pipeline-container">'
+    if status == "COMPLETED":
+        current_idx = len(stages)
+    elif status == "FAILED":
+        current_idx = match_idx
+    elif status == "QUEUED":
+        current_idx = 0
+    else:
+        current_idx = match_idx
+
+    html_parts = ['<div class="pipeline-container">']
     for i, (label, icon) in enumerate(stages):
-        state = ""
-        if current_stage == -1:
-            state = "failed" if i == 2 else "completed" if i < 2 else ""
-        elif i < current_stage:
+        if status == "FAILED" and i == current_idx:
+            state = "failed"
+            step_icon = "✗"
+        elif i < current_idx:
             state = "completed"
-        elif i == current_stage:
+            step_icon = "✓"
+        elif i == current_idx and status == "RUNNING":
             state = "running"
-            
-        html += f"""
-        <div class="pipeline-step {state}">
-            <div class="step-icon">{icon if state != 'completed' else '✓'}</div>
-            <div class="step-label">{label}</div>
-        </div>
-        """
-    html += '</div>'
-    st.markdown(html, unsafe_allow_html=True)
+            step_icon = icon
+        else:
+            state = ""
+            step_icon = icon
+
+        html_parts.append(
+            f'<div class="pipeline-step {state}">'
+            f'<div class="step-icon">{step_icon}</div>'
+            f'<div class="step-label">{label}</div>'
+            f'</div>'
+        )
+    html_parts.append('</div>')
+    st.markdown("".join(html_parts), unsafe_allow_html=True)
 
 # --- Sidebar ---
 with st.sidebar:
@@ -315,7 +325,9 @@ if page == "Dashboard":
         if not df_exps.empty:
             df_display = pd.DataFrame()
             df_display["Experiment ID"] = df_exps["experiment_id"]
-            df_display["Model Version"] = df_exps.get("model_version", "v1")
+            # Replace Version column with Dataset ID; retain model versioning separately
+            df_display["Dataset ID"] = df_exps.get("dataset_id", "ds_default")
+            df_display["Dataset File"] = df_exps.get("dataset_name", "dataset.csv")
             df_display["Task Type"] = df_exps.get("task_type", "classification")
             df_display["Best Algorithm"] = df_exps.get("best_model", "N/A")
             df_display["Status"] = df_exps["status"]
@@ -340,7 +352,7 @@ elif page == "New Experiment":
                 elif ext == "json": df = pd.read_json(uploaded_file)
                 elif ext == "parquet": df = pd.read_parquet(uploaded_file)
                 
-                st.success(f"✓ Dataset loaded successfully: {df.shape[0]} rows, {df.shape[1]} columns")
+                st.success(f"✓ Dataset '{uploaded_file.name}' loaded successfully: {df.shape[0]} rows, {df.shape[1]} columns")
                 st.dataframe(df.head(), use_container_width=True)
                 
                 st.markdown("### 2. Configure Automation Target & Algorithms")
@@ -388,7 +400,8 @@ elif page == "New Experiment":
                     selected_algos_names = st.multiselect("Algorithms to Train & Evaluate", list(algos.keys()), default=list(algos.keys())[:3])
                     selected_algos = [algos[name] for name in selected_algos_names]
                 
-                if st.button("🚀 Start End-to-End Automation Pipeline", type="primary", use_container_width=True):
+                is_active = "polling_exp_id" in st.session_state
+                if st.button("🚀 Start End-to-End Automation Pipeline", type="primary", use_container_width=True, disabled=is_active):
                     if not selected_algos:
                         st.error("Please select at least one algorithm.")
                     else:
@@ -414,7 +427,7 @@ elif page == "New Experiment":
             except Exception as e:
                 st.error(f"Error reading file: {e}")
 
-    # Polling logic for ongoing run
+    # Polling logic for ongoing run with genuine backend progress
     if "polling_exp_id" in st.session_state:
         exp_id = st.session_state["polling_exp_id"]
         st.markdown("---")
@@ -427,25 +440,29 @@ elif page == "New Experiment":
             exp_data = api.get_experiment(exp_id)
             if not exp_data:
                 status_placeholder.warning("Waiting for pipeline orchestrator to initialize...")
-                time.sleep(2)
+                time.sleep(1.5)
                 continue
                 
             status = exp_data.get("status", "UNKNOWN")
+            stage = exp_data.get("stage", "Upload")
+            stage_details = exp_data.get("stage_details", "")
             
             with tracker_placeholder:
-                render_pipeline_tracker(status)
+                render_pipeline_tracker(stage, status)
                 
             if status in ["COMPLETED", "FAILED"]:
                 st.session_state["selected_experiment_id"] = exp_id
                 if status == "COMPLETED":
-                    status_placeholder.success("✨ Pipeline completed successfully! View comprehensive results in the Results tab.")
+                    render_pipeline_tracker("Packaging", "COMPLETED")
+                    status_placeholder.success("✨ Pipeline completed successfully! All 7 stages passed. View comprehensive results in the Results tab.")
                 else:
-                    status_placeholder.error(f"❌ Pipeline failed: {exp_data.get('error', exp_data.get('error_message', 'Unknown error'))}")
+                    render_pipeline_tracker(stage, "FAILED")
+                    status_placeholder.error(f"❌ Pipeline failed at stage '{stage}': {exp_data.get('error', exp_data.get('error_message', 'Unknown error'))}")
                 del st.session_state["polling_exp_id"]
                 break
                 
-            status_placeholder.info("⏳ Pipeline executing: Validation → Feature Engineering → Training → Security Gates → Packaging...")
-            time.sleep(2.5)
+            status_placeholder.info(f"⏳ **Active Stage: {stage}** — {stage_details or 'Executing MLSecOps pipeline...'}")
+            time.sleep(2.0)
 
 # --- Results ---
 elif page == "Results":
@@ -635,18 +652,34 @@ elif page == "Results":
                     """, unsafe_allow_html=True)
                     
                 with d2:
-                    st.markdown("### ⚙️ Resource & Compute Metrics")
+                    st.markdown("### ⚙️ Resource & Dataset Metrics")
+                    dq = exp.get("data_quality", {})
+                    cleaning = dq.get("cleaning", {})
+                    actions = cleaning.get("actions", [])
                     st.markdown(f"""
                     <div style="background: var(--card-bg); padding: 24px; border-radius: 12px; border: 1px solid var(--card-border);">
                         <ul style="list-style-type: none; padding-left: 0; margin-bottom: 0;">
-                            <li style="margin-bottom: 10px;">⚡ <strong>Total Pipeline Execution Time:</strong> {res.get('pipeline_execution_time_sec', 0):.2f} seconds</li>
-                            <li style="margin-bottom: 10px;">💻 <strong>System CPU Count:</strong> {res.get('cpu_count', 'N/A')} cores</li>
-                            <li style="margin-bottom: 10px;">🧠 <strong>Memory (RAM) Allocated:</strong> {res.get('ram_used_gb', 0)} GB / {res.get('ram_total_gb', 0)} GB ({res.get('ram_usage_percent', 0)}%)</li>
+                            <li style="margin-bottom: 10px;">🏷️ <strong>Dataset ID:</strong> <code>{ds.get('dataset_id', 'ds_default')}</code></li>
+                            <li style="margin-bottom: 10px;">📁 <strong>Dataset Filename:</strong> <code>{ds.get('file_name', ds.get('name', 'dataset.csv'))}</code></li>
                             <li style="margin-bottom: 10px;">🎯 <strong>Target Column:</strong> <code>{ds.get('target_column', ds.get('name', 'target'))}</code></li>
-                            <li style="margin-bottom: 0;">📊 <strong>Dataset Shape:</strong> {ds.get('n_samples', 'N/A')} rows × {ds.get('n_features', 'N/A')} features</li>
+                            <li style="margin-bottom: 10px;">📊 <strong>Cleaned Shape:</strong> {ds.get('n_samples', 'N/A')} rows × {ds.get('n_features', 'N/A')} features</li>
+                            <li style="margin-bottom: 10px;">⚡ <strong>Total Execution Time:</strong> {res.get('pipeline_execution_time_sec', 0):.2f} seconds</li>
+                            <li style="margin-bottom: 0;">🧠 <strong>Memory Allocated:</strong> {res.get('ram_used_gb', 0)} GB / {res.get('ram_total_gb', 0)} GB ({res.get('ram_usage_percent', 0)}%)</li>
                         </ul>
                     </div>
                     """, unsafe_allow_html=True)
+                    if actions:
+                        with st.expander(f"🧹 Data Cleaning Report ({len(actions)} actions applied)"):
+                            for act in actions:
+                                st.markdown(f"- ✓ {act}")
+                            if "before" in cleaning and "after" in cleaning:
+                                b = cleaning["before"]
+                                a = cleaning["after"]
+                                st.table(pd.DataFrame({
+                                    "Metric": ["Rows", "Features", "Duplicates", "Missing Cells", "Missing Ratio"],
+                                    "Before Cleaning": [b.get("rows"), b.get("features"), b.get("duplicate_rows"), b.get("total_missing"), f"{b.get('missing_ratio', 0):.2%}"],
+                                    "After Cleaning": [a.get("rows"), a.get("features"), a.get("duplicate_rows"), a.get("total_missing"), f"{a.get('missing_ratio', 0):.2%}"]
+                                }))
 
 # --- Monitoring ---
 elif page == "Monitoring":

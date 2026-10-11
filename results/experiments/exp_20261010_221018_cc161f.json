@@ -1,0 +1,174 @@
+{
+  "experiment_id": "exp_20261010_221018_cc161f",
+  "experiment_name": "default_experiment",
+  "model_version": "v49",
+  "dataset_id": "ds_diabetes_dataset_with_headers_62f174cd",
+  "created_at": "2026-10-10T16:40:55Z",
+  "status": "FAILED",
+  "error_message": "Data quality check failed:\n - Each classification class must have at least 2 samples for validation splitting.",
+  "config": {
+    "project": {
+      "name": "automated-mlsecops",
+      "version": "1.0.0",
+      "random_seed": 42,
+      "log_level": "INFO"
+    },
+    "paths": {
+      "data_raw": "data/raw",
+      "data_processed": "data/processed",
+      "models": "models",
+      "results": "results",
+      "mlflow_uri": "sqlite:///mlflow.db"
+    },
+    "dataset": {
+      "name": "diabetes_dataset_with_headers",
+      "source": "file",
+      "test_size": 0.2,
+      "validation_size": 0.1,
+      "csv_path": "data\\raw\\cardata.csv",
+      "file_path": "data\\raw\\diabetes_dataset_with_headers.csv",
+      "target_column": "value",
+      "task_type": "classification",
+      "dataset_id": "ds_diabetes_dataset_with_headers_62f174cd",
+      "file_name": "diabetes_dataset_with_headers.csv"
+    },
+    "data_quality": {
+      "min_rows": 20,
+      "min_features": 2,
+      "max_missing_ratio": 0.5,
+      "max_column_missing_ratio": 0.8,
+      "imbalance_threshold": 0.2,
+      "outlier_std_dev": 4.0,
+      "deduplicate": true,
+      "handle_outliers": true
+    },
+    "features": {
+      "numerical_strategy": "median",
+      "scale": "standard",
+      "pca_components": null
+    },
+    "training": {
+      "algorithms": [
+        "logistic_regression",
+        "random_forest",
+        "gradient_boosting"
+      ],
+      "hyperparameters": {
+        "logistic_regression": {
+          "C": 1.0,
+          "max_iter": 1000,
+          "solver": "lbfgs"
+        },
+        "random_forest": {
+          "n_estimators": 100,
+          "max_depth": 10,
+          "min_samples_split": 5
+        },
+        "gradient_boosting": {
+          "n_estimators": 100,
+          "learning_rate": 0.1,
+          "max_depth": 5
+        }
+      },
+      "cv_folds": 5,
+      "optimization_metric": "f1"
+    },
+    "mlflow": {
+      "experiment_prefix": "mlsecops",
+      "model_name": "credit_fraud_classifier",
+      "auto_log": true
+    },
+    "security": {
+      "dependency_audit": true,
+      "secrets_scan": true,
+      "data_integrity": true,
+      "adversarial_robustness": true,
+      "model_integrity": true,
+      "max_critical_vulns": 0,
+      "max_high_vulns": 2,
+      "min_robustness_score": 0.7,
+      "poisoning_threshold": 0.05
+    },
+    "monitoring": {
+      "drift_threshold": 0.1,
+      "latency_p99_ms": 200,
+      "prediction_drift_threshold": 0.15,
+      "check_interval_seconds": 60
+    },
+    "auto_response": {
+      "retrain_on_drift": true,
+      "rollback_on_gate_failure": true,
+      "alert_webhook_url": ""
+    },
+    "dea": {
+      "inputs": [
+        "development_time_hours",
+        "training_time_seconds",
+        "dataset_size",
+        "cpu_usage_percent",
+        "memory_usage_mb",
+        "labor_effort_hours"
+      ],
+      "outputs": [
+        "f1_score",
+        "robustness_score",
+        "inference_latency_ms",
+        "security_pass_rate"
+      ]
+    },
+    "api": {
+      "host": "0.0.0.0",
+      "port": 8000,
+      "workers": 1,
+      "reload": false
+    }
+  },
+  "dataset": {
+    "name": "diabetes_dataset_with_headers",
+    "file_name": "diabetes_dataset_with_headers.csv",
+    "dataset_id": "ds_diabetes_dataset_with_headers_62f174cd",
+    "source": "file",
+    "task_type": "classification"
+  },
+  "data_quality": {
+    "passed": true
+  },
+  "models": {},
+  "best_model": null,
+  "security": {
+    "overall_passed": false,
+    "overall_score": 0.0,
+    "gate_results": []
+  },
+  "resources": {
+    "pipeline_execution_time_sec": 0.0,
+    "cpu_count": 12,
+    "ram_total_gb": 15.7,
+    "ram_used_gb": 11.39,
+    "ram_usage_percent": 72.5
+  },
+  "monitoring": {
+    "drift_threshold": 0.1,
+    "anomaly_detector_active": true
+  },
+  "deployment": {
+    "stage": "Staging",
+    "model_version": "v49",
+    "registered": false,
+    "api_endpoint": "http://localhost:8000/predict"
+  },
+  "research_metrics": {
+    "task_type": "classification",
+    "f1_score": 0.0,
+    "precision": 0.0,
+    "recall": 0.0,
+    "accuracy": 0.0,
+    "roc_auc": 0.5,
+    "rmse": 0.0,
+    "mae": 0.0,
+    "r2_score": 0.0,
+    "security_compliance": 0.0,
+    "latency_p50_ms": 0.0,
+    "latency_p95_ms": 0.0
+  }
+}

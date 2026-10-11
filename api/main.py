@@ -434,11 +434,20 @@ def security_audit():
 # --- Experiment & Pipeline Endpoints ---
 
 def _background_run_pipeline(experiment_id: str, config: dict):
-    """Background task to run the pipeline."""
+    """Background task to run the pipeline with genuine stage reporting."""
+    def _stage_cb(stage_name: str, details: str = ""):
+        if experiment_id in _RUNNING_EXPERIMENTS:
+            _RUNNING_EXPERIMENTS[experiment_id]["stage"] = stage_name
+            _RUNNING_EXPERIMENTS[experiment_id]["stage_details"] = details
+
     try:
         _RUNNING_EXPERIMENTS[experiment_id]["status"] = "RUNNING"
-        run_pipeline(register=True, stage="Staging", experiment_id=experiment_id, config=config)
+        _RUNNING_EXPERIMENTS[experiment_id]["stage"] = "Upload"
+        _RUNNING_EXPERIMENTS[experiment_id]["stage_details"] = "Starting pipeline..."
+        run_pipeline(register=True, stage="Staging", experiment_id=experiment_id, config=config, stage_callback=_stage_cb)
         _RUNNING_EXPERIMENTS[experiment_id]["status"] = "COMPLETED"
+        _RUNNING_EXPERIMENTS[experiment_id]["stage"] = "Packaging"
+        _RUNNING_EXPERIMENTS[experiment_id]["stage_details"] = "Pipeline execution complete"
     except Exception as exc:
         logger.error("Pipeline failed for %s: %s", experiment_id, exc, exc_info=True)
         _RUNNING_EXPERIMENTS[experiment_id]["status"] = "FAILED"
@@ -464,6 +473,19 @@ class RunPipelineRequest(BaseModel):
 @app.post("/experiments/run", tags=["Experiments"])
 def run_experiment(background_tasks: BackgroundTasks, req: RunPipelineRequest = None):
     """Trigger a new MLSecOps pipeline run."""
+    # Prevent duplicate runs if a pipeline is actively running
+    for exp_k, exp_v in _RUNNING_EXPERIMENTS.items():
+        if exp_v.get("status") in ["RUNNING", "QUEUED"]:
+            if time.time() - exp_v.get("start_time", 0) < 600:
+                logger.info("Pipeline already running: %s (stage=%s)", exp_k, exp_v.get("stage", "Upload"))
+                return {
+                    "experiment_id": exp_k,
+                    "status": exp_v["status"],
+                    "stage": exp_v.get("stage", "Upload"),
+                    "stage_details": exp_v.get("stage_details", ""),
+                    "message": "Pipeline already running",
+                }
+
     cfg = load_config()
     if req:
         # Override config based on request
@@ -476,13 +498,15 @@ def run_experiment(background_tasks: BackgroundTasks, req: RunPipelineRequest = 
     
     _RUNNING_EXPERIMENTS[experiment_id] = {
         "status": "QUEUED",
+        "stage": "Upload",
+        "stage_details": "Queued for processing",
         "start_time": time.time(),
         "error": None
     }
     
     background_tasks.add_task(_background_run_pipeline, experiment_id, cfg)
     
-    return {"experiment_id": experiment_id, "status": "QUEUED"}
+    return {"experiment_id": experiment_id, "status": "QUEUED", "stage": "Upload"}
 
 
 @app.get("/experiments", tags=["Experiments"])
@@ -502,7 +526,12 @@ def get_experiment(experiment_id: str):
     if experiment_id in _RUNNING_EXPERIMENTS:
         status_info = _RUNNING_EXPERIMENTS[experiment_id]
         if status_info["status"] in ["QUEUED", "RUNNING"]:
-            return {"experiment_id": experiment_id, "status": status_info["status"]}
+            return {
+                "experiment_id": experiment_id,
+                "status": status_info["status"],
+                "stage": status_info.get("stage", "Upload"),
+                "stage_details": status_info.get("stage_details", ""),
+            }
             
     # Try to load from disk
     result = load_experiment_result(experiment_id, results_dir=cfg["paths"]["results"])
@@ -510,7 +539,12 @@ def get_experiment(experiment_id: str):
         return result
         
     if experiment_id in _RUNNING_EXPERIMENTS and status_info["status"] == "FAILED":
-        return {"experiment_id": experiment_id, "status": "FAILED", "error": status_info["error"]}
+        return {
+            "experiment_id": experiment_id,
+            "status": "FAILED",
+            "stage": status_info.get("stage", "Unknown"),
+            "error": status_info["error"],
+        }
         
     raise HTTPException(status_code=404, detail="Experiment not found")
 
@@ -572,11 +606,183 @@ def download_experiment_model(experiment_id: str):
         "gate_results": sec.get("gate_results", []),
     }
 
+    # Generate minimal usable HTML frontend for the model
+    sample_feature_count = max(1, ds.get("n_features", 4))
+    sample_vector = [0.5] * sample_feature_count
+
+    index_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Inference Interface - {model_ver}</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #0F172A;
+            color: #F8FAFC;
+            margin: 0;
+            padding: 30px 20px;
+            display: flex;
+            justify-content: center;
+        }}
+        .container {{
+            max-width: 720px;
+            width: 100%;
+            background: #1E293B;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 28px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+        }}
+        h1 {{ margin-top: 0; font-size: 24px; color: #F8FAFC; }}
+        .badge {{
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            background: rgba(99, 102, 241, 0.2);
+            color: #818CF8;
+            border: 1px solid rgba(99, 102, 241, 0.4);
+            margin-right: 8px;
+        }}
+        .meta-row {{ margin-bottom: 20px; }}
+        label {{ font-size: 14px; font-weight: 600; color: #94A3B8; display: block; margin-bottom: 8px; }}
+        textarea {{
+            width: 100%;
+            height: 90px;
+            background: #0B0F19;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            color: #F8FAFC;
+            padding: 12px;
+            font-family: monospace;
+            font-size: 13px;
+            box-sizing: border-box;
+            resize: vertical;
+        }}
+        textarea:focus {{ outline: none; border-color: #6366F1; }}
+        .btn-group {{ display: flex; gap: 10px; margin-top: 14px; }}
+        button {{
+            padding: 10px 18px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: 0.15s;
+        }}
+        .btn-primary {{
+            background: #6366F1;
+            color: white;
+            flex: 1;
+        }}
+        .btn-primary:hover {{ background: #4F46E5; }}
+        .btn-secondary {{
+            background: #334155;
+            color: #E2E8F0;
+        }}
+        .btn-secondary:hover {{ background: #475569; }}
+        .result-card {{
+            margin-top: 24px;
+            background: #0B0F19;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 20px;
+            display: none;
+        }}
+        .result-title {{ font-size: 13px; color: #94A3B8; text-transform: uppercase; font-weight: 600; }}
+        .result-value {{ font-size: 26px; font-weight: 700; color: #10B981; margin: 8px 0; }}
+        .latency {{ font-size: 12px; color: #94A3B8; }}
+        .error {{ color: #EF4444; margin-top: 10px; font-size: 14px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛡️ Deployed Model Inference</h1>
+        <div class="meta-row">
+            <span class="badge">Model: {model_ver}</span>
+            <span class="badge">Algorithm: {bm.get('algorithm', 'unknown')}</span>
+            <span class="badge">Task: {ds.get('task_type', 'classification')}</span>
+        </div>
+        <form id="pred-form" onsubmit="event.preventDefault(); makePrediction();">
+            <label for="features-input">Input Features (comma-separated or JSON array):</label>
+            <textarea id="features-input" placeholder="e.g. 0.5, -1.2, 0.8, 1.4"></textarea>
+            <div class="btn-group">
+                <button type="button" class="btn-secondary" onclick="loadSample()">Load Sample</button>
+                <button type="submit" id="predict-btn" class="btn-primary">Generate Prediction</button>
+            </div>
+        </form>
+        <div id="error-box" class="error"></div>
+        <div id="result-box" class="result-card">
+            <div class="result-title">Prediction Result</div>
+            <div id="pred-val" class="result-value">-</div>
+            <div id="prob-val" style="color: #E2E8F0; font-size: 14px; margin-bottom: 6px;"></div>
+            <div id="latency-val" class="latency"></div>
+        </div>
+    </div>
+    <script>
+        function loadSample() {{
+            const sample = {json.dumps(sample_vector)};
+            document.getElementById('features-input').value = sample.join(', ');
+        }}
+        async function makePrediction() {{
+            const errBox = document.getElementById('error-box');
+            const resBox = document.getElementById('result-box');
+            errBox.innerText = '';
+            const raw = document.getElementById('features-input').value.trim();
+            if (!raw) {{ errBox.innerText = 'Please enter feature values'; return; }}
+            let features;
+            try {{
+                if (raw.startsWith('[') && raw.endsWith(']')) {{
+                    features = JSON.parse(raw);
+                    if (!Array.isArray(features[0])) features = [features];
+                }} else {{
+                    features = [raw.split(',').map(s => Number(s.trim()))];
+                }}
+            }} catch(e) {{
+                errBox.innerText = 'Invalid input format. Use comma-separated numbers or JSON array.';
+                return;
+            }}
+            const btn = document.getElementById('predict-btn');
+            btn.disabled = true;
+            btn.innerText = 'Predicting...';
+            const t0 = performance.now();
+            try {{
+                const res = await fetch('/predict', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ features: features }})
+                }});
+                const data = await res.json();
+                const latency = Math.round(performance.now() - t0);
+                if (!res.ok) throw new Error(data.detail || 'Prediction failed');
+                document.getElementById('pred-val').innerText = 'Predicted: ' + JSON.stringify(data.predictions);
+                if (data.probabilities) {{
+                    document.getElementById('prob-val').innerText = 'Probabilities: ' + JSON.stringify(data.probabilities);
+                }} else {{
+                    document.getElementById('prob-val').innerText = '';
+                }}
+                document.getElementById('latency-val').innerText = 'Roundtrip: ' + latency + ' ms';
+                resBox.style.display = 'block';
+            }} catch(err) {{
+                errBox.innerText = 'Error: ' + err.message;
+            }} finally {{
+                btn.disabled = false;
+                btn.innerText = 'Generate Prediction';
+            }}
+        }}
+    </script>
+</body>
+</html>"""
+
     # Generate the deployable FastAPI prediction server code
     fastapi_code = f"""
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import List, Any, Optional
+from pathlib import Path
 import joblib
 import json
 import pandas as pd
@@ -584,7 +790,7 @@ import pandas as pd
 app = FastAPI(
     title="Deployed Secure ML Model API",
     version="{model_ver}",
-    description="Executable prediction endpoint generated by Secure MLOps Pipeline"
+    description="Executable prediction endpoint with interactive frontend generated by Secure MLOps Pipeline"
 )
 
 # Load artifacts
@@ -608,7 +814,16 @@ class PredictResponse(BaseModel):
     probabilities: Optional[List[Any]] = None
     model_version: str
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
+@app.get("/ui", response_class=HTMLResponse)
+def serve_ui():
+    ui_path = Path("index.html")
+    if ui_path.exists():
+        with open(ui_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse("<h2>Deployed Secure ML Model API</h2><p>Visit <a href='/docs'>/docs</a></p>")
+
+@app.get("/api/info")
 def root():
     return {{
         "service": "Deployed Secure ML API",
@@ -657,6 +872,16 @@ joblib>=1.3.2
 pydantic>=2.4.2
 """
 
+    config_json = {
+        "model_version": model_ver,
+        "experiment_id": experiment_id,
+        "algorithm": bm.get("algorithm", "unknown"),
+        "task_type": ds.get("task_type", "classification"),
+        "optimal_threshold": bm.get("optimal_threshold", 0.5),
+        "dataset_name": ds.get("file_name") or ds.get("name", "dataset.csv"),
+        "n_features": sample_feature_count,
+    }
+
     readme_md = f"""# Deployed ML Model Package ({model_ver})
 
 **Experiment ID:** `{experiment_id}`
@@ -673,28 +898,37 @@ pydantic>=2.4.2
 pip install -r requirements.txt
 ```
 
-### 2. Launch FastAPI Inference Server
+### 2. Launch FastAPI Inference Server & Web Frontend
 ```bash
 uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
-### 3. Send Prediction Request
+### 3. Open Interactive Web Frontend
+Open your web browser and navigate to:
+**http://localhost:8000/ui** (or open `index.html` directly)
+
+You can click **"Load Sample"** to load example features and **"Generate Prediction"** to test live inferences!
+
+### 4. Send API Prediction Request via cURL
 ```bash
 curl -X POST "http://localhost:8000/predict" \\
      -H "Content-Type: application/json" \\
-     -d '{{"features": [[0.5, 1.2, -0.8, 0.4]]}}'
+     -d '{{"features": [{sample_vector}]}}'
 ```
 
 ---
 
 ## 📦 Package Contents
+- `index.html`: Interactive web frontend interface
+- `app.py`: Executable FastAPI inference service serving API + UI
 - `best_model.joblib`: Trained machine learning model
 - `feature_pipeline.joblib`: Preprocessing transformer pipeline
-- `app.py`: Executable FastAPI inference service
+- `config.json`: Deployment configuration
 - `model_metadata.json`: Full model version and training metadata
 - `evaluation_results.json`: Model performance metrics breakdown
 - `security_results.json`: Security gates compliance report
 - `requirements.txt`: Python package requirements
+- `README.md`: Run and prediction instructions
 """
 
     import io
@@ -706,7 +940,9 @@ curl -X POST "http://localhost:8000/predict" \\
         if pipe_path.exists():
             zip_file.write(pipe_path, "feature_pipeline.joblib")
             
+        zip_file.writestr("index.html", index_html.strip())
         zip_file.writestr("app.py", fastapi_code.strip())
+        zip_file.writestr("config.json", json.dumps(config_json, indent=2))
         zip_file.writestr("requirements.txt", requirements_txt.strip())
         zip_file.writestr("README.md", readme_md.strip())
         zip_file.writestr("model_metadata.json", json.dumps(model_metadata, indent=2, default=str))
@@ -783,7 +1019,10 @@ async def upload_dataset(
         f.write(content)
 
     import yaml
-    # Update config.yaml with new file path, target_column and task_type
+    from src.data.loader import generate_dataset_id
+    dataset_id = generate_dataset_id(file.filename, content)
+
+    # Update config.yaml with new file path, target_column, task_type and dataset identifiers
     config_path = Path("configs/config.yaml")
     if config_path.exists():
         with open(config_path, "r", encoding="utf-8") as f:
@@ -791,6 +1030,9 @@ async def upload_dataset(
 
         yaml_cfg["dataset"]["source"] = "file"
         yaml_cfg["dataset"]["file_path"] = str(file_path)
+        yaml_cfg["dataset"]["file_name"] = file.filename
+        yaml_cfg["dataset"]["dataset_id"] = dataset_id
+        yaml_cfg["dataset"]["name"] = Path(file.filename).stem
         yaml_cfg["dataset"]["target_column"] = target_column
         yaml_cfg["dataset"]["task_type"] = task_type
 
@@ -802,6 +1044,7 @@ async def upload_dataset(
 
     return {
         "status": "success",
+        "dataset_id": dataset_id,
         "file_path": str(file_path),
         "file_name": file.filename,
         "file_size_bytes": len(content),

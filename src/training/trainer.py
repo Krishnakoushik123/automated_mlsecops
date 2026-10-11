@@ -24,6 +24,7 @@ import joblib
 import mlflow
 import mlflow.sklearn
 import numpy as np
+import pandas as pd
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier, GradientBoostingRegressor, RandomForestRegressor
 from sklearn.linear_model import LogisticRegression, LinearRegression
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
@@ -129,7 +130,7 @@ def compute_metrics(
     X: np.ndarray,
     y: np.ndarray,
     threshold: float = 0.5,
-    n_latency_samples: int = 200,
+    n_latency_samples: int = 30,
     task_type: str = "classification"
 ) -> Dict[str, Any]:
     """Compute classification or regression metrics + inference latency."""
@@ -233,8 +234,10 @@ def cross_validate_model(
             "r2": make_scorer(r2_score),
         }
         cv = KFold(n_splits=n_folds, shuffle=True, random_state=seed)
-        
-    results = cross_validate(model, X, y, cv=cv, scoring=scoring, n_jobs=-1)
+
+    import os
+    n_workers = min(4, os.cpu_count() or 1)
+    results = cross_validate(model, X, y, cv=cv, scoring=scoring, n_jobs=n_workers)
     
     cv_metrics = {}
     for k, v in results.items():
@@ -289,10 +292,29 @@ def train_model(
         mlflow.log_param("train_size", len(X_train))
         mlflow.log_param("random_seed", seed)
 
+        # Check class imbalance on train split only (preventing data leakage)
+        sample_weight = None
+        if task_type == "classification":
+            counts = pd.Series(y_train).value_counts(normalize=True)
+            min_class_ratio = float(counts.min()) if len(counts) > 0 else 1.0
+            imbalance_thresh = config.get("data_quality", {}).get("imbalance_threshold", 0.20)
+            if min_class_ratio < imbalance_thresh:
+                logger.info(
+                    "Class imbalance detected on train split (min_ratio=%.3f < %.2f). Applying balanced sample weighting.",
+                    min_class_ratio, imbalance_thresh,
+                )
+                from sklearn.utils.class_weight import compute_sample_weight
+                sample_weight = compute_sample_weight("balanced", y_train)
+
         # --- Training ---
         logger.info("Training %s …", algorithm)
         t_start = time.perf_counter()
-        model.fit(X_train, y_train)
+        import inspect
+        fit_params = inspect.signature(model.fit).parameters
+        if sample_weight is not None and "sample_weight" in fit_params:
+            model.fit(X_train, y_train, sample_weight=sample_weight)
+        else:
+            model.fit(X_train, y_train)
         training_time = time.perf_counter() - t_start
         logger.info("Training %s complete in %.3fs", algorithm, training_time)
 

@@ -161,19 +161,28 @@ def create_standard_experiment_result(
         "ram_usage_percent": vm.percent,
     }
 
+    cfg_ds = (config or {}).get("dataset", {})
+    ds_dict = dataset_meta or {
+        "name": cfg_ds.get("name", "credit_fraud"),
+        "file_name": cfg_ds.get("file_name") or (f"{cfg_ds.get('name', 'dataset')}.csv" if not str(cfg_ds.get("name", "")).endswith(".csv") else cfg_ds.get("name")),
+        "dataset_id": cfg_ds.get("dataset_id") or f"ds_{cfg_ds.get('name', 'dataset')}",
+        "source": cfg_ds.get("source", "sklearn"),
+        "task_type": task_type,
+    }
+    ds_id_val = ds_dict.get("dataset_id") or cfg_ds.get("dataset_id") or f"ds_{ds_dict.get('name', 'dataset')}"
+    ds_dict.setdefault("dataset_id", ds_id_val)
+    ds_dict.setdefault("file_name", ds_dict.get("file_name") or cfg_ds.get("file_name") or ds_dict.get("name", "dataset.csv"))
+
     result = {
         "experiment_id": exp_id,
         "experiment_name": experiment_name,
         "model_version": version_str,
+        "dataset_id": ds_id_val,
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "status": status,
         "error_message": error_message,
         "config": config,
-        "dataset": dataset_meta or {
-            "name": config.get("dataset", {}).get("name", "credit_fraud"),
-            "source": config.get("dataset", {}).get("source", "sklearn"),
-            "task_type": task_type,
-        },
+        "dataset": ds_dict,
         "data_quality": val_report or {"passed": True},
         "models": models_summary,
         "best_model": best_model_info,
@@ -275,6 +284,8 @@ def list_experiments(results_dir: str = "results") -> List[Dict[str, Any]]:
                 summaries.append({
                     "experiment_id": data.get("experiment_id"),
                     "experiment_name": data.get("experiment_name"),
+                    "dataset_id": ds.get("dataset_id") or data.get("dataset_id") or f"ds_{ds.get('name', 'dataset')}",
+                    "dataset_name": ds.get("file_name") or ds.get("name") or "dataset.csv",
                     "model_version": data.get("model_version") or data.get("deployment", {}).get("model_version", "v1"),
                     "created_at": data.get("created_at"),
                     "status": data.get("status"),
